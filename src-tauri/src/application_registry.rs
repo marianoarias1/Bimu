@@ -29,4 +29,23 @@ pub(crate) fn defaults()->Vec<Entry>{
 
 #[cfg(test)]mod discovered_tests{use super::*;#[test]fn validates_discovered_ids_and_preserves_existing_entries(){assert!(valid_app_id("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"));for id in ["", "../bad", "C:\\bad.exe", "bad\nname"]{assert!(!valid_app_id(id))}let entry=Entry{id:"new".into(),name:"Calculadora moderna".into(),aliases:vec![],remember:false,target:Target::ShellApp{app_id:"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App".into()}};let json=serde_json::to_string(&entry).unwrap();let decoded:Entry=serde_json::from_str(&json).unwrap();assert!(validate(&[decoded]).is_ok());}}
 
-#[cfg(test)]mod migration_tests{use super::*;#[test]fn accepts_shortcuts_and_catalogs_larger_than_the_old_limit(){let shortcut:Entry=serde_json::from_str(r#"{"id":"discord","name":"Discord","aliases":[],"remember":false,"target":{"kind":"Shortcut","path":"C:\\ProgramData\\Discord.lnk"}}"#).unwrap();let entries=(0..31).map(|index|Entry{id:format!("app-{index}"),name:format!("App {index}"),aliases:vec![],remember:false,target:shortcut.target.clone()}).collect::<Vec<_>>();assert!(validate(&entries).is_ok());}}
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    #[test]
+    fn accepts_shortcuts_and_catalogs_larger_than_the_old_limit() {
+        let shortcut = Entry {
+            id: "discord".into(), name: "Discord".into(), aliases: vec![], remember: false,
+            target: Target::Shortcut { path: std::env::temp_dir().join("Discord.lnk") },
+        };
+        let encoded = serde_json::to_vec(&shortcut).unwrap();
+        let decoded: Entry = serde_json::from_slice(&encoded).unwrap();
+        let entries = (0..1001).map(|index| Entry {
+            id: format!("app-{index}"), name: format!("App {index}"),
+            aliases: vec![], remember: false, target: decoded.target.clone(),
+        }).collect::<Vec<_>>();
+        assert!(validate(&entries[..31]).is_ok());
+        assert!(validate(&entries[..1000]).is_ok());
+        assert!(validate(&entries).is_err());
+    }
+}
