@@ -1,4 +1,4 @@
-use std::{fs,path::PathBuf,sync::Mutex,time::{SystemTime,UNIX_EPOCH}};
+use std::{path::PathBuf,sync::Mutex,time::{SystemTime,UNIX_EPOCH}};
 use serde::{Serialize,Deserialize};
 use sha2::{Digest,Sha256};
 use tauri::{AppHandle,State,Manager};
@@ -15,11 +15,11 @@ struct Pending{id:u64,app_id:String}
 use crate::application_intent::{normalized,requested};
 use crate::application_registry::{Entry,Target,AppInfo,view,available,validate,defaults};
 fn config(app:&AppHandle)->Result<PathBuf,String>{Ok(app.path().app_config_dir().map_err(|_|"No se pudo localizar la configuración de aplicaciones.")?.join("applications-v1.json"))}
-fn load(app:&AppHandle,r:&mut Registry)->Result<(),String>{if r.loaded{return Ok(())}let path=config(app)?;r.entries=if path.exists(){let bytes=fs::read(path).map_err(|_|"No se pudo leer la lista de aplicaciones.")?;if bytes.len()>65536{return Err("La lista de aplicaciones es demasiado grande.".into());}serde_json::from_slice(&bytes).map_err(|_|"La configuración de aplicaciones está dañada.")?}else{defaults()};validate(&r.entries)?;r.loaded=true;Ok(())}
-fn save(app:&AppHandle,entries:&[Entry])->Result<(),String>{validate(entries)?;let shortcut_names:std::collections::HashSet<_>=crate::assistant::names(app)?.iter().map(|n|normalized(n)).collect();if entries.iter().any(|e|std::iter::once(&e.name).chain(&e.aliases).any(|n|shortcut_names.contains(&normalized(n)))){return Err("Ese nombre o alias ya pertenece a un atajo rápido.".into())}let path=config(app)?;let parent=path.parent().ok_or("Ruta de configuración inválida.")?;fs::create_dir_all(parent).map_err(|_|"No se pudo guardar la configuración.")?;let temp=path.with_extension("tmp");fs::write(&temp,serde_json::to_vec_pretty(entries).map_err(|_|"No se pudo preparar la configuración.")?).map_err(|_|"No se pudo guardar la configuración.")?;fs::rename(temp,path).map_err(|_|"No se pudo actualizar la configuración.")?;Ok(())}
+fn load(app:&AppHandle,r:&mut Registry)->Result<(),String>{if r.loaded{return Ok(())}let path=config(app)?;r.entries=if path.exists(){crate::config_migration::migrate_file(&path,4*1024*1024,"applications").map_err(|e|format!("No se pudo migrar la configuración de aplicaciones: {e}"))?}else{defaults()};validate(&r.entries)?;r.loaded=true;Ok(())}
+fn save(app:&AppHandle,entries:&[Entry])->Result<(),String>{validate(entries)?;let shortcut_names:std::collections::HashSet<_>=crate::assistant::names(app)?.iter().map(|n|normalized(n)).collect();if entries.iter().any(|e|std::iter::once(&e.name).chain(&e.aliases).any(|n|shortcut_names.contains(&normalized(n)))){return Err("Ese nombre o alias ya pertenece a un atajo rápido.".into())}let path=config(app)?;let bytes=crate::config_migration::encode_items(entries,"applications")?;crate::config_migration::write_atomic(&path,&bytes)}
 pub(crate) fn launch(app:&AppHandle,entry:&Entry)->Result<(),String>{
     if !available(entry){return Err(format!("{} no está instalada o no se encontró en la ruta registrada. Revisá Ajustes → Atajos rápidos.",entry.name));}
-    match &entry.target{Target::Spotify=>app.opener().open_url("spotify:",None::<&str>).map_err(|_|"Windows no pudo abrir Spotify.".into()),Target::Exe{path}=>std::process::Command::new(path).spawn().map(|_|()).map_err(|e|format!("Windows no pudo abrir {}: {}",entry.name,e)),Target::ShellApp{app_id}=>launch_shell(app_id)}
+    match &entry.target{Target::Spotify=>app.opener().open_url("spotify:",None::<&str>).map_err(|_|"Windows no pudo abrir Spotify.".into()),Target::Exe{path}=>std::process::Command::new(path).spawn().map(|_|()).map_err(|e|format!("Windows no pudo abrir {}: {}",entry.name,e)),Target::Shortcut{path}=>app.opener().open_path(path.to_string_lossy().into_owned(),None::<&str>).map_err(|_|format!("Windows no pudo abrir {}.",entry.name)),Target::ShellApp{app_id}=>launch_shell(app_id)}
 }
 fn launch_shell(app_id:&str)->Result<(),String>{
  if !crate::application_registry::valid_app_id(app_id){return Err("Identificador de aplicación inválido.".into())}

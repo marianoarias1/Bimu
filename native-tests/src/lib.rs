@@ -2,6 +2,7 @@
 // Exercise the production modules that support current Bimu features.
 #[path="../../src-tauri/src/application_intent.rs"]pub mod application_intent;
 #[path="../../src-tauri/src/application_registry.rs"]pub mod application_registry;
+#[path="../../src-tauri/src/config_migration.rs"]pub mod config_migration;
 #[path="../../src-tauri/src/release_core.rs"]pub mod release_core;
 #[path="../../src-tauri/src/assistant_core.rs"]pub mod assistant_core;
 #[path="../../src-tauri/src/startup_core.rs"]pub mod startup_core;

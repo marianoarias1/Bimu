@@ -17,6 +17,7 @@ mod release_core;
 mod updates;
 mod workspace;
 mod applications;
+mod config_migration;
 mod assistant;
 mod assistant_core;
 mod application_intent;
