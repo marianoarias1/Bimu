@@ -53,3 +53,9 @@ Las pruebas automatizadas no sustituyen la verificación manual en Windows de an
 ## Actualizaciones
 
 El flujo de GitHub Actions construye el instalador para versiones nuevas. Bimu verifica el tamaño y el SHA-256 proporcionado por GitHub antes de abrir una actualización; esta comprobación no equivale a una firma digital independiente.
+
+### Publicación de la web
+
+La página de descarga se publica desde `docs/` mediante GitHub Pages. Los cambios en esa carpeta se validan con el workflow `Website` y no requieren incrementar la versión de Bimu ni compilar instaladores. Las PR que solo modifican la web, README, ROADMAP o los workflows de web/verificación/release omiten la compilación de Windows. Los cambios de la aplicación conservan los controles de versión, pruebas y compilación habituales.
+
+Microsoft Store es la descarga recomendada: https://apps.microsoft.com/detail/9NZRVTXK49XS. El instalador tradicional de GitHub sigue disponible como alternativa sin firma digital. Publicar cambios en la web no envía actualizaciones a Microsoft Store.

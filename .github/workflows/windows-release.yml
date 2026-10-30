@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths-ignore:
       - 'docs/**'
+      - 'README.md'
+      - 'ROADMAP.md'
+      - '.github/workflows/website.yml'
       - '.github/workflows/verify-pull-request.yml'
       - '.github/workflows/windows-release.yml'
   workflow_dispatch:
