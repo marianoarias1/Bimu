@@ -6,7 +6,30 @@ permissions:
   contents: read
   pull-requests: read
 jobs:
-  verify:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.classify.outputs.app }}
+    steps:
+      - name: Classify pull request files
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" --jq '.[].filename' > changed-files.txt
+          test -s changed-files.txt
+          app=false
+          while IFS= read -r file; do
+            case "$file" in
+              docs/*|README.md|ROADMAP.md|.github/workflows/verify-pull-request.yml|.github/workflows/windows-release.yml|.github/workflows/website.yml) ;;
+              *) app=true ;;
+            esac
+          done < changed-files.txt
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+  build:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -19,7 +42,7 @@ jobs:
         run: |
           $files = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files?per_page=100" --jq '.[].filename')
           if ($LASTEXITCODE -ne 0 -or $files.Count -eq 0) { throw 'Could not check pull request files.' }
-          $releaseFiles = @($files | Where-Object { -not $_.StartsWith('docs/') -and $_ -ne '.github/workflows/verify-pull-request.yml' -and $_ -ne '.github/workflows/windows-release.yml' })
+          $releaseFiles = @($files | Where-Object { -not $_.StartsWith('docs/') -and $_ -ne '.github/workflows/verify-pull-request.yml' -and $_ -ne '.github/workflows/windows-release.yml' -and $_ -ne '.github/workflows/website.yml' -and $_ -ne 'README.md' -and $_ -ne 'ROADMAP.md' })
           if ($releaseFiles.Count -eq 0) { Write-Host 'Website and workflow changes do not require a new app version.'; exit 0 }
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $tags = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name'
@@ -47,3 +70,21 @@ jobs:
         with:
           name: Bimu-verificacion-no-publicar
           path: src-tauri/target/release/bundle/nsis/*-setup.exe
+  verify:
+    if: always()
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm required verification
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          APP_CHANGED: ${{ needs.changes.outputs.app }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          if [ "$APP_CHANGED" = true ]; then
+            test "$BUILD_RESULT" = success
+          else
+            test "$APP_CHANGED" = false
+            echo 'Website/documentation only: no Windows installer or app version bump required.'
+          fi

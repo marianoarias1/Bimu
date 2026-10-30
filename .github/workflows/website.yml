@@ -1,0 +1,45 @@
+name: Website
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate download script
+        run: node --check docs/download.js
+      - name: Validate website links and assets
+        shell: python
+        run: |
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlsplit, unquote
+
+          root = Path('docs').resolve()
+          class Links(HTMLParser):
+              def handle_starttag(self, tag, attrs):
+                  for key, value in attrs:
+                      if key not in ('href', 'src') or not value:
+                          continue
+                      url = urlsplit(value)
+                      if url.scheme or url.netloc or not url.path:
+                          continue
+                      target = (self.page.parent / unquote(url.path)).resolve()
+                      assert target.is_relative_to(root) and target.exists(), f'{self.page}: missing {value}'
+
+          for page in root.rglob('*.html'):
+              parser = Links()
+              parser.page = page
+              parser.feed(page.read_text())
+          print('Website links and assets OK')
