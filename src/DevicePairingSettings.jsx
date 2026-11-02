@@ -3,7 +3,7 @@ import {invoke,isTauri} from '@tauri-apps/api/core'
 import {Link2,Monitor,Laptop,Unlink,Info,X,ChevronLeft,Copy,Check,RefreshCw,LoaderCircle,Clock3,Clipboard,Files} from 'lucide-react'
 import {pairingView,canPair,remainingCodeTime,codeTimeLabel,limitSummary,validTransferLimit} from './device-pairing-ui'
 
-function PairInfo({title,children,above=false}){
+export function PairInfo({title,children,above=false}){
  const [open,setOpen]=useState(false),root=useRef(null),trigger=useRef(null),panel=useRef(null),id=useId()
  const close=()=>{setOpen(false);trigger.current?.focus()}
  useEffect(()=>{

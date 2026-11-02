@@ -17,3 +17,5 @@
 #[path="../../src-tauri/src/pairing_discovery.rs"]pub mod pairing_discovery;
 
 #[path="../../src-tauri/src/transfer_limits.rs"]pub mod transfer_limits;
+
+#[path="../../src-tauri/src/application_icon_pixels.rs"]pub mod application_icon_pixels;
