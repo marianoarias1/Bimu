@@ -35,3 +35,7 @@ export function createLyricsLoader(lookup,{now=Date.now,maxEntries=24}={}){
   return entry.promise
  }
 }
+
+export function hasCompactLyrics(enabled,lyrics,index){
+ return !!(enabled&&lyrics.status==='synced'&&index>=0&&lyrics.lines[index]?.text)
+}

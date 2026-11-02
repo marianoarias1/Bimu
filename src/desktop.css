@@ -847,7 +847,7 @@ html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface{--lyrics
 html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface,
 html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::before,
 html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::after{
- background:var(--lyrics-background);background-size:var(--lyrics-width,100%) var(--lyrics-height,100%);background-repeat:no-repeat;
+ background:var(--lyrics-background);background-repeat:no-repeat;
 }
 html[data-lyrics=true][data-edge=top] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 0 100%,transparent 11.5px,#000 12px)}
 html[data-lyrics=true][data-edge=top] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 100% 100%,transparent 11.5px,#000 12px)}
@@ -857,3 +857,14 @@ html[data-lyrics=true][data-edge=left] .desktop.compact .notch-surface::before{m
 html[data-lyrics=true][data-edge=left] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 100% 100%,transparent 11.5px,#000 12px)}
 html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 0 0,transparent 11.5px,#000 12px);background-position:right top}
 html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 0 100%,transparent 11.5px,#000 12px);background-position:right bottom}
+
+/* Fill the animated body itself, never a delayed pixel snapshot. Background
+   shorthand transitions also interpolate background-size and expose the desktop. */
+html[data-lyrics=true] .desktop.compact .notch-surface{background-size:100% 100%;transition:background-color .2s,border-color .2s}
+html[data-lyrics=true] .desktop.compact .notch-surface::before,
+html[data-lyrics=true] .desktop.compact .notch-surface::after{background-size:var(--lyrics-width,100%) var(--lyrics-height,100%)}
+/* Keep overflowing text/controls inside the current animated surface. Reveal
+   the two-column lyric page once its geometry has settled on every edge. */
+.desktop.compact .notch-player{overflow:hidden}
+html[data-lyrics=true][data-notch=peek] .desktop.compact .notch-player{transition-delay:var(--dock-duration,260ms)}
+@media(prefers-reduced-motion:reduce){html[data-lyrics=true][data-notch=peek] .desktop.compact .notch-player{transition-delay:0ms}}

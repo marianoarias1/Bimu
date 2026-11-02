@@ -35,3 +35,21 @@ test('cache stays bounded and user errors never reveal HTTP or provider details'
   const text=lyricsFailure(error);assert.ok(text.length>20);assert.ok(!/503|HTTP|LRCLIB/.test(text))
  }
 })
+
+import {hasCompactLyrics} from '../src/lyrics-request.js'
+import {notchSize} from '../src/dock-geometry.js'
+test('idle lyrics occupy space only when a synchronized line can actually be displayed on every edge',()=>{
+ for(const status of ['idle','loading','error','missing','instrumental','synced']){
+  const lyrics={status,lines:status==='synced'?[{text:'Hello',time:1}]:[]}
+  for(const index of [-1,0])for(const enabled of [false,true]){
+   const ready=hasCompactLyrics(enabled,lyrics,index)
+   assert.equal(ready,enabled&&status==='synced'&&index===0)
+   for(const edge of ['top','bottom','left','right']){
+    const size=notchSize(edge,'idle','M',ready?'lyrics':'home')
+    const normal=notchSize(edge,'idle','M','home')
+    if(ready)assert.ok(size[0]>normal[0])
+    else assert.deepEqual(size,normal)
+   }
+  }
+ }
+})
