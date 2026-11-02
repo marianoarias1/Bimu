@@ -1,10 +1,12 @@
 import {useEffect,useRef,useState} from 'react'
 import {invoke} from '@tauri-apps/api/core'
 import {registeredLaunch} from './application-intent'
+import {registeredApp} from './shortcut-ui'
 export function useApplications({native,onResult}){
  const [discovered,setDiscovered]=useState([]),[discovering,setDiscovering]=useState(false),[discoveryLoaded,setDiscoveryLoaded]=useState(false)
  const discoveryLock=useRef(false)
  const [items,setItems]=useState([]),[pending,setPending]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('')
+ const itemsRef=useRef(items);itemsRef.current=items
  const lock=useRef(false),current=useRef(null),mounted=useRef(true),callback=useRef(onResult);callback.current=onResult
  const refresh=async()=>{if(!native)return;try{const entries=await invoke('apps_list');if(mounted.current){setItems(entries);setError('')}}catch(e){if(mounted.current)setError(String(e.message||e))}}
  useEffect(()=>{mounted.current=true;refresh();return()=>{mounted.current=false;if(current.current)invoke('apps_cancel',{id:current.current.id}).catch(()=>{})}},[native])
@@ -24,6 +26,6 @@ export function useApplications({native,onResult}){
   catch(e){await invoke('apps_cancel',{id:proposal.id}).catch(()=>{});if(mounted.current){setError(String(e.message||e));current.current=null;setPending(null)}return false}finally{lock.current=false;if(mounted.current)setBusy(false)}
  }
  const cancel=async()=>{const proposal=current.current;if(!proposal||lock.current)return;try{await invoke('apps_cancel',{id:proposal.id});current.current=null;setPending(null);if(!proposal.silent)callback.current(proposal.text,'Apertura cancelada.')}catch(e){setError(String(e.message||e))}}
- const change=async(command,args)=>{if(lock.current||current.current)return;lock.current=true;setBusy(true);setError('');try{const list=await invoke(command,args);if(list)setItems(list);return true}catch(e){setError(String(e.message||e));return false}finally{lock.current=false;setBusy(false)}}
- return {items,pending,busy,error,refresh,request,confirm,cancel,discovered,discovering,discoveryLoaded,discover,addDiscovered:async id=>{const ok=await change('apps_add_discovered',{id});if(ok)setDiscovered(list=>list.map(item=>item.id===id?{...item,added:true}:item));return ok},add:()=>change('apps_add'),update:(id,name,aliases,remember)=>change('apps_update',{id,name,aliases,remember}),remove:id=>change('apps_remove',{id}),isCommand:text=>registeredLaunch(items,text)}
+ const change=async(command,args,withEntries=false)=>{if(lock.current||current.current)return;lock.current=true;setBusy(true);setError('');try{const list=await invoke(command,args);if(list){itemsRef.current=list;if(mounted.current)setItems(list)}return withEntries?(list||null):true}catch(e){setError(String(e.message||e));return false}finally{lock.current=false;setBusy(false)}}
+ return {items,pending,busy,error,refresh,request,confirm,cancel,ensureDiscovered:async item=>{const existing=registeredApp(itemsRef.current,item);if(existing)return existing;const list=await change('apps_add_discovered',{id:item.id},true);return list?registeredApp(list,item):null},pick:async()=>{const old=new Set(itemsRef.current.map(item=>item.id));const list=await change('apps_add',{},true);return list?.find(item=>!old.has(item.id))||null},discovered,discovering,discoveryLoaded,discover,addDiscovered:async id=>{const ok=await change('apps_add_discovered',{id});if(ok)setDiscovered(list=>list.map(item=>item.id===id?{...item,added:true}:item));return ok},add:()=>change('apps_add'),update:(id,name,aliases,remember)=>change('apps_update',{id,name,aliases,remember}),remove:id=>change('apps_remove',{id}),isCommand:text=>registeredLaunch(items,text)}
 }

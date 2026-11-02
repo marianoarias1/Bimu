@@ -1,18 +1,124 @@
-import React,{useCallback,useEffect,useState} from 'react'
+import React,{useCallback,useEffect,useId,useRef,useState} from 'react'
 import {invoke,isTauri} from '@tauri-apps/api/core'
-import {Link2,Monitor,Unlink} from 'lucide-react'
+import {Link2,Monitor,Laptop,Unlink,Info,X,ChevronLeft,Copy,Check,RefreshCw,LoaderCircle,Clock3,Clipboard,Files} from 'lucide-react'
+import {pairingView,canPair,remainingCodeTime,codeTimeLabel,limitSummary,validTransferLimit} from './device-pairing-ui'
+
+export function PairInfo({title,children,above=false}){
+ const [open,setOpen]=useState(false),root=useRef(null),trigger=useRef(null),panel=useRef(null),id=useId()
+ const close=()=>{setOpen(false);trigger.current?.focus()}
+ useEffect(()=>{
+  if(!open)return
+  panel.current?.focus()
+  const outside=e=>{if(!root.current?.contains(e.target))setOpen(false)}
+  const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setOpen(false);trigger.current?.focus()}}
+  document.addEventListener('pointerdown',outside,true);document.addEventListener('focusin',outside);document.addEventListener('keydown',key,true)
+  return()=>{document.removeEventListener('pointerdown',outside,true);document.removeEventListener('focusin',outside);document.removeEventListener('keydown',key,true)}
+ },[open])
+ return <div ref={root} className={'pair-info'+(above?' pair-info-above':'')}>
+  <button ref={trigger} type="button" className="pair-icon-button" aria-label={title+' · más información'} aria-expanded={open} aria-controls={open?id:undefined} onClick={()=>setOpen(v=>!v)}><Info size={16}/></button>
+  {open&&<div ref={panel} id={id} className="pair-info-popover" role="dialog" aria-label={title} tabIndex={-1}><span className="pair-popover-heading"><strong>{title}</strong><button type="button" className="pair-icon-button" aria-label="Cerrar información" onClick={close}><X size={14}/></button></span><div className="pair-popover-content">{children}</div></div>}
+ </div>
+}
 
 export function DevicePairingSettings(){
- const [status,setStatus]=useState({phase:'idle'}),[address,setAddress]=useState(''),[code,setCode]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[peers,setPeers]=useState([]),[searching,setSearching]=useState(false)
- const refresh=useCallback(async()=>{if(!isTauri())return;try{setStatus(await invoke('device_pairing_status'))}catch(e){setError(String(e))}},[])
+ const native=isTauri()
+ const [status,setStatus]=useState({phase:native?'loading':'idle'}),[route,setRoute]=useState('start')
+ const [address,setAddress]=useState(''),[code,setCode]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('')
+ const [busy,setBusy]=useState(false),[peers,setPeers]=useState([]),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false),[manual,setManual]=useState(false)
+ const [editing,setEditing]=useState(false),[limit,setLimit]=useState('30'),[copied,setCopied]=useState(false),[now,setNow]=useState(Date.now()),[confirmForget,setConfirmForget]=useState(false)
+ const alive=useRef(true),refreshing=useRef(false),scanning=useRef(false),operation=useRef(false),epoch=useRef(0),titleRef=useRef(null)
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;epoch.current++}},[])
+ const refresh=useCallback(async()=>{
+  if(!native||refreshing.current||operation.current)return
+  refreshing.current=true;const token=epoch.current
+  try{const value=await invoke('device_pairing_status');if(alive.current&&token===epoch.current)setStatus(value);return value}
+  catch(e){if(alive.current&&token===epoch.current){setError(String(e));setStatus(s=>s.phase==='loading'?{...s,phase:'idle'}:s)}}
+  finally{refreshing.current=false}
+ },[native])
  useEffect(()=>{refresh();const timer=setInterval(refresh,1000);return()=>clearInterval(timer)},[refresh])
- const discover=useCallback(async()=>{if(!isTauri())return;setSearching(true);try{setPeers(await invoke('device_pairing_discover'))}catch(e){setError(String(e))}finally{setSearching(false)}},[])
- useEffect(()=>{if(!['idle','error'].includes(status.phase))return;discover();const timer=setInterval(discover,4000);return()=>clearInterval(timer)},[discover,status.phase])
- const run=async(command,args={})=>{setBusy(true);setError('');try{await invoke(command,args);await refresh()}catch(e){setError(String(e))}finally{setBusy(false)}}
- return <section className="behavior-card glass-card device-pairing"><h2><Link2 size={16}/> Vincular computadoras</h2><p>Conectá dos PCs con Bimu en la misma red. Al vincular, se sincronizan automáticamente texto, imágenes y archivos de hasta 10 MB. Los equipos vinculados se reconectan cuando están disponibles. Los archivos recibidos se guardan en Bimu.</p>
- {error&&<p className="device-pairing-error" role="alert">{error}</p>}
- {status.linked&&status.phase!=='connected'&&<p role="status">Equipo vinculado. Buscando conexión automáticamente…</p>}
- {status.phase==='connected'?<div className="device-pairing-state"><Monitor size={18}/><strong>Conectada con {status.peer}</strong><small>Texto, imágenes y archivos de hasta 10 MB · reconexión automática activada</small>{status.message&&<small role="status">{status.message}</small>}</div>:status.phase==='waiting'?<div className="device-pairing-state"><strong>Ingresá estos datos en la otra PC</strong><span className="device-pairing-code">{status.code}</span><span className="device-pairing-address">{status.address}</span><small>El código vence en dos minutos y permite un intento.</small>{status.message&&<small role="status">{status.message}</small>}</div>:status.phase==='connecting'?<div className="device-pairing-state"><strong>{status.message||'Conectando…'}</strong><small>Esto puede tardar unos segundos.</small></div>:<><div className="device-pairing-create"><strong>Esta es la PC principal</strong><button type="button" disabled={busy||!isTauri()} onClick={()=>run('device_pairing_host')}>Generar código</button></div><div className="device-pairing-join"><strong>Esta es la otra PC</strong><button type="button" disabled={searching||!isTauri()} onClick={discover}>{searching?'Buscando…':'Buscar computadoras'}</button>{peers.map(peer=><button type="button" key={peer.address} onClick={()=>setAddress(peer.address)}>{peer.name}{address===peer.address?' ✓':''}</button>)}<details><summary>Ingresar dirección manualmente</summary><label>Dirección local<input value={address} onChange={e=>setAddress(e.target.value)} placeholder="192.168.1.10:12345" autoComplete="off"/></label></details><label>Código de seis dígitos<input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} inputMode="numeric" placeholder="000000" autoComplete="off"/></label><button type="button" disabled={busy||!isTauri()||code.length!==6||!address.trim()} onClick={()=>run('device_pairing_join',{address,code})}>Vincular</button></div>{status.message&&<p className="device-pairing-error" role="status">{status.message}</p>}</>}
- {(status.linked||['waiting','connecting'].includes(status.phase))&&<button className="device-pairing-disconnect" type="button" disabled={busy} onClick={()=>run(status.linked?'device_pairing_forget':'device_pairing_disconnect')}><Unlink size={13}/>{status.linked?'Desvincular equipo':'Cancelar'}</button>}
+ const discover=useCallback(async()=>{
+  if(!native||scanning.current)return
+  scanning.current=true;setSearching(true);const token=epoch.current
+  try{const found=await invoke('device_pairing_discover');if(alive.current&&token===epoch.current){setPeers(found);setSearched(true)}}
+  catch(e){if(alive.current&&token===epoch.current){setError(String(e));setSearched(true)}}
+  finally{scanning.current=false;if(alive.current)setSearching(false)}
+ },[native])
+ const view=pairingView(status,route),summary=limitSummary(status),remaining=remainingCodeTime(status.codeExpiresAt,now)
+ useEffect(()=>{if(view!=='join')return;discover();const timer=setInterval(discover,4000);return()=>clearInterval(timer)},[discover,view])
+ useEffect(()=>{if(view!=='code')return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[view,status.code])
+ useEffect(()=>{if(!editing&&status.transferLimitMb)setLimit(String(status.transferLimitMb))},[status.transferLimitMb,editing])
+ useEffect(()=>{setConfirmForget(false);setEditing(false);setCopied(false);titleRef.current?.focus()},[view])
+ useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(false),2000);return()=>clearTimeout(timer)},[copied])
+ const run=async(command,args={})=>{
+  if(!native||operation.current)return false
+  operation.current=true;epoch.current++;setBusy(true);setError('');setNotice('')
+  try{
+   const result=await invoke(command,args);if(!alive.current)return false
+   if(result?.phase)setStatus(result)
+   if(command==='device_pairing_disconnect'||command==='device_pairing_forget')setStatus(s=>({...s,phase:'idle',linked:command==='device_pairing_forget'?false:s.linked,code:null,message:null,codeExpiresAt:null}))
+   const fresh=await invoke('device_pairing_status');if(alive.current)setStatus(fresh);return true
+  }catch(e){if(alive.current)setError(String(e));return false}
+  finally{operation.current=false;if(alive.current)setBusy(false)}
+ }
+ const goBack=async()=>{
+  if(['waiting','connecting'].includes(status.phase)&&!await run('device_pairing_disconnect'))return
+  epoch.current++;setRoute('start');setAddress('');setCode('');setManual(false);setError('');setNotice('')
+ }
+ const host=()=>{setRoute('host');run('device_pairing_host')}
+ const join=()=>{epoch.current++;setError('');setNotice('');setRoute('join')}
+ const copyCode=async()=>{try{await navigator.clipboard.writeText(status.code||'');if(alive.current)setCopied(true)}catch{if(alive.current)setError('No se pudo copiar el código. Podés ingresarlo manualmente en la otra PC.')}}
+ const submit=async e=>{e.preventDefault();if(canPair(address,code,peers,manual))await run('device_pairing_join',{address:address.trim(),code})}
+ const saveLimit=async e=>{e.preventDefault();if(validTransferLimit(limit)&&await run('device_pairing_set_limit',{mb:Number(limit)})){setEditing(false);setNotice('Límite guardado.')}}
+ const restoreLimit=async()=>{if(await run('device_pairing_set_limit',{mb:null})){setLimit('30');setEditing(false);setNotice('Se restableció el límite por defecto.')} }
+ const forget=async()=>{if(await run('device_pairing_forget')){setRoute('start');setAddress('');setCode('');setPeers([]);setManual(false)}}
+ const connected=view==='connected',linkedView=connected||view==='reconnecting'
+ const transferSettings=<div className="pair-limit-card">
+  <div className="pair-limit-heading"><strong>{editing&&summary.inherited?'Tu preferencia':'Máximo por envío'}</strong><PairInfo title="Límite de archivos" above><p>De 1 a 250 MB por selección, incluyendo el total de una carpeta. Por defecto: 30 MB.</p><p>Si la PC que generó el código guardó un límite, ambas lo usan mientras estén conectadas. Si no, cada una usa el suyo al enviar.</p><p>Tu preferencia se conserva al desconectar. Restablecer elimina tu personalización. El ajuste no reserva memoria.</p><p>Las imágenes copiadas como imagen tienen un límite independiente.</p></PairInfo></div>
+  {!editing?<><div className="pair-limit-value"><strong>{summary.value} MB</strong><button type="button" disabled={!native||busy} onClick={()=>{setLimit(String(status.transferLimitMb||30));setEditing(true)}}>{summary.editLabel}</button></div><small>{summary.source}</small></>:<form className="pair-limit-editor" onSubmit={saveLimit}>
+   {summary.inherited&&<small>Ahora se usan {summary.value} MB de {status.peer||'la PC principal'}. Esta elección queda guardada como tu preferencia propia.</small>}
+   <label>Límite por envío (MB)<input type="number" min="1" max="250" step="1" value={limit} onChange={e=>setLimit(e.target.value)} aria-invalid={!validTransferLimit(limit)} aria-describedby="pair-limit-range"/></label><small id="pair-limit-range">Entre 1 y 250 MB.</small>
+   <div className="pair-editor-actions"><button type="button" className="pair-text-button" disabled={busy||!status.limitConfigured} onClick={restoreLimit}>Restablecer por defecto</button><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" className="pair-primary" disabled={busy||!validTransferLimit(limit)}>Guardar</button></div>
+  </form>}
+ </div>
+ const connectionInfo=<PairInfo title="Sobre la conexión"><p>Ambas PCs deben estar en la misma red local.</p><p>Se sincronizan el portapapeles y los elementos de Archivos a mano. Los equipos vinculados se reconectan al abrir Bimu.</p><p>En Archivos a mano, los archivos se descargan al abrirlos desde el otro equipo.</p></PairInfo>
+ const back=<button type="button" className="pair-back" disabled={busy} onClick={goBack}><ChevronLeft size={14}/> Volver</button>
+ const heading=text=><h2 ref={titleRef} tabIndex={-1}>{text}</h2>
+ return <section className="behavior-card glass-card device-pairing pairing-flow" aria-label="Vincular computadoras">
+  {(view==='start'||linkedView||view==='loading')&&<div className="pair-heading">{heading(linkedView?'Tus dispositivos':<><Link2 size={16}/> Vincular computadoras</>)}{connectionInfo}</div>}
+  {error&&<p className="pair-feedback pair-error" role="alert">{error}</p>}
+  {!error&&status.phase==='error'&&status.message&&<p className="pair-feedback pair-error" role="alert">{status.message}</p>}
+  {notice&&<p className="pair-feedback" role="status">{notice}</p>}
+  {view==='loading'?<div className="pair-progress" role="status"><LoaderCircle className="pair-spinner" size={18}/> Cargando dispositivos…</div>:view==='start'?<>
+   <p className="pair-helper">Ambas PCs deben estar en la misma red.</p>
+   <div className="pair-choice"><Monitor size={25}/><div><h3>Empezar desde esta PC</h3><p>Generá un código para vincular tu otro equipo.</p><button type="button" className="pair-primary" disabled={!native||busy} onClick={host}>{busy?'Generando…':'Generar código'}</button></div></div>
+   <div className="pair-choice"><Laptop size={25}/><div><h3>Ya tengo un código</h3><p>Buscá la PC que lo está mostrando.</p><button type="button" disabled={!native||busy} onClick={join}>Conectar con otra PC</button></div></div>
+   <details className="pair-transfer-options"><summary>Opciones de transferencia</summary>{transferSettings}</details>
+  </>:view==='code'?<>
+   {back}<div className="pair-code-stage">{heading(remaining===0?'El código venció':'Ingresá este código en la otra PC')}
+   <div className="pair-code-box"><strong aria-label={'Código '+(status.code||'').split('').join(' ')}>{(status.code||'').replace(/(\d{3})(\d{3})/,'$1 $2')}</strong><button type="button" className="pair-icon-button" aria-label={copied?'Código copiado':'Copiar código'} disabled={remaining===0} onClick={copyCode}>{copied?<Check size={16}/>:<Copy size={16}/>}</button></div>
+   <div className="pair-code-meta"><span>Esta PC: <strong>{status.localName||'Este equipo'}</strong></span><span><Clock3 size={12}/>{codeTimeLabel(remaining)}</span></div>
+   <ol className="pair-instructions"><li>Abrí Dispositivos en la otra PC.</li><li>Elegí <strong>{status.localName||'esta PC'}</strong> e ingresá el código.</li></ol><details className="pair-transfer-options pair-code-address"><summary>¿No aparece esta PC en el otro equipo?</summary><small>Ingresá esta dirección en la opción «¿No aparece tu PC?» del otro equipo.</small><code>{status.address}</code></details>
+   {remaining===0?<button type="button" className="pair-primary" disabled={busy} onClick={host}>Generar otro código</button>:<div className="pair-progress" role="status"><LoaderCircle size={17} className="pair-spinner"/> Esperando a la otra PC…</div>}
+   <button type="button" disabled={busy} onClick={goBack}>Cancelar</button></div>
+  </>:view==='join'?<>
+   <div className="pair-stage-heading">{back}{heading('Conectar con otra PC')}{connectionInfo}</div>
+   <p className="pair-helper">Elegí la PC que está mostrando el código. Ambas deben estar en la misma red.</p>
+   <form onSubmit={submit} className="pair-join-form">
+    <div className="pair-peer-list" aria-label="Computadoras disponibles">
+     {peers.map(peer=><button type="button" key={peer.address} className={'pair-peer'+(address===peer.address&&!manual?' is-selected':'')} aria-pressed={address===peer.address&&!manual} onClick={()=>{setAddress(peer.address);setCode('');setManual(false)}}><Monitor size={23}/><span><strong>{peer.name}</strong><small><span className="pair-status-dot"/> Disponible</small></span>{address===peer.address&&!manual&&<Check size={17}/>}</button>)}
+     {!peers.length&&<p className="pair-empty" role="status">{searching?<><LoaderCircle size={16} className="pair-spinner"/> Buscando equipos…</>:searched?'Todavía no encontramos otra PC. Generá un código en ese equipo.':'Buscando equipos disponibles…'}</p>}
+    </div>
+    <label className="pair-field">Código de seis dígitos<input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" required/></label>
+    <button type="submit" className="pair-primary" disabled={!native||busy||!canPair(address,code,peers,manual)}>Vincular equipo</button>
+    <div className="pair-join-footer"><button type="button" className="pair-text-button" disabled={searching||busy} onClick={()=>{setError('');discover()}}><RefreshCw size={13} className={searching?'pair-spinner':''}/>{searching?'Buscando…':'Actualizar búsqueda'}</button><button type="button" className="pair-text-button" aria-expanded={manual} onClick={()=>setManual(v=>!v)}>¿No aparece tu PC?</button></div>
+    {manual&&<div className="pair-manual"><p>Revisá que ambas PCs estén en la misma red y que la otra esté mostrando un código. Si no aparece, ingresá su dirección local.</p><label className="pair-field">Dirección local<input value={address} onChange={e=>setAddress(e.target.value)} placeholder="192.168.1.10:12345" autoComplete="off"/></label></div>}
+   </form>
+  </>:linkedView?<>
+   <div className="pair-connected-card"><Laptop size={27}/><div><h3>{status.peer||'Tu equipo vinculado'}</h3><span className="pair-connection-label">{connected?<><span className="pair-status-dot"/> Conectada</>:<><LoaderCircle size={13} className="pair-spinner"/> Buscando conexión…</>}</span><small>{connected?'Se reconecta automáticamente':'Se conectará cuando ambas PCs estén disponibles.'}</small></div></div>
+   {connected&&<div className="pair-sync-row"><span>Sincronización activa</span><span aria-label="Portapapeles y archivos"><Clipboard size={16}/><Files size={16}/></span></div>}
+   {status.message&&status.phase!=='error'&&<p className="pair-feedback" role="status">{status.message}</p>}
+   {transferSettings}
+   {confirmForget?<div className="pair-forget-confirm"><p>¿Desvincular este equipo? Para volver a conectarlo necesitarás un código nuevo.</p><div><button type="button" disabled={busy} onClick={()=>setConfirmForget(false)}>Cancelar</button><button type="button" className="pair-danger" disabled={busy} onClick={forget}>Desvincular</button></div></div>:<button type="button" className="pair-danger pair-forget" disabled={busy} onClick={()=>setConfirmForget(true)}><Unlink size={13}/> Desvincular equipo</button>}
+  </>:view==='connecting'?<><div className="pair-progress-stage">{heading('Conectando los equipos')}<div className="pair-progress" role="status"><LoaderCircle size={20} className="pair-spinner"/><span>{status.message||'Verificando el código…'}</span></div></div><button type="button" disabled={busy} onClick={goBack}>Cancelar</button></>:<>{back}<div className="pair-progress-stage">{heading(busy?'Generando código…':'Generar un código')}<p className="pair-helper">Ambas PCs deben estar en la misma red.</p><button type="button" className="pair-primary" disabled={!native||busy} onClick={host}>{busy?<><LoaderCircle size={16} className="pair-spinner"/> Generando…</>:'Generar código'}</button></div></>}
  </section>
 }

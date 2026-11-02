@@ -16,7 +16,7 @@ use crate::application_intent::{normalized,requested};
 use crate::application_registry::{Entry,Target,AppInfo,view,available,validate,defaults};
 fn config(app:&AppHandle)->Result<PathBuf,String>{Ok(app.path().app_config_dir().map_err(|_|"No se pudo localizar la configuración de aplicaciones.")?.join("applications-v1.json"))}
 fn load(app:&AppHandle,r:&mut Registry)->Result<(),String>{if r.loaded{return Ok(())}let path=config(app)?;r.entries=if path.exists(){crate::config_migration::migrate_file(&path,4*1024*1024,"applications").map_err(|e|format!("No se pudo migrar la configuración de aplicaciones: {e}"))?}else{defaults()};validate(&r.entries)?;r.loaded=true;Ok(())}
-fn save(app:&AppHandle,entries:&[Entry])->Result<(),String>{validate(entries)?;let shortcut_names:std::collections::HashSet<_>=crate::assistant::names(app)?.iter().map(|n|normalized(n)).collect();if entries.iter().any(|e|std::iter::once(&e.name).chain(&e.aliases).any(|n|shortcut_names.contains(&normalized(n)))){return Err("Ese nombre o alias ya pertenece a un atajo rápido.".into())}let path=config(app)?;let bytes=crate::config_migration::encode_items(entries,"applications")?;crate::config_migration::write_atomic(&path,&bytes)}
+fn save(app:&AppHandle,entries:&[Entry])->Result<(),String>{validate(entries)?;let path=config(app)?;let bytes=crate::config_migration::encode_items(entries,"applications")?;crate::config_migration::write_atomic(&path,&bytes)}
 pub(crate) fn launch(app:&AppHandle,entry:&Entry)->Result<(),String>{
     if !available(entry){return Err(format!("{} no está instalada o no se encontró en la ruta registrada. Revisá Ajustes → Atajos rápidos.",entry.name));}
     match &entry.target{Target::Spotify=>app.opener().open_url("spotify:",None::<&str>).map_err(|_|"Windows no pudo abrir Spotify.".into()),Target::Exe{path}=>std::process::Command::new(path).spawn().map(|_|()).map_err(|e|format!("Windows no pudo abrir {}: {}",entry.name,e)),Target::Shortcut{path}=>app.opener().open_path(path.to_string_lossy().into_owned(),None::<&str>).map_err(|_|format!("Windows no pudo abrir {}.",entry.name)),Target::ShellApp{app_id}=>launch_shell(app_id)}
@@ -56,7 +56,7 @@ fn discovery_id(app_id:&str)->String{let digest=Sha256::digest(app_id.as_bytes()
  let item=r.discovered.iter().find(|item|item.id==id).cloned().ok_or("Volvé a buscar las aplicaciones e intentá nuevamente.")?;
  let app_id=r.discovered_ids.iter().find(|(key,_)|*key==id).map(|(_,value)|value.clone()).ok_or("Aplicación no encontrada.")?;
  let mut entries=r.entries.clone();
- if let Some(existing)=entries.iter_mut().find(|e|e.id==id||normalized(&e.name)==normalized(&item.name)||e.aliases.iter().any(|a|normalized(a)==normalized(&item.name))){if available(existing){return Err("Esa aplicación ya está registrada.".into())}existing.target=Target::ShellApp{app_id};}
+ if let Some(existing)=entries.iter_mut().find(|e|e.id==id||normalized(&e.name)==normalized(&item.name)||e.aliases.iter().any(|a|normalized(a)==normalized(&item.name))){if available(existing){return Ok(r.entries.iter().map(view).collect())}existing.target=Target::ShellApp{app_id};}
  else{entries.push(Entry{id:id.clone(),name:item.name,aliases:vec![],remember:false,target:Target::ShellApp{app_id}})}save(&app,&entries)?;r.entries=entries;
  if let Some(item)=r.discovered.iter_mut().find(|item|item.id==id){item.added=true}Ok(r.entries.iter().map(view).collect())
 }
@@ -86,3 +86,18 @@ fn discovery_id(app_id:&str)->String{let digest=Sha256::digest(app_id.as_bytes()
 #[cfg(test)]mod tests{use super::*;#[test]fn recognizes_only_direct_requests(){assert_eq!(requested("Hola Bimu, abrí la aplicación Spotify, por favor."),Some("spotify".into()));assert_eq!(requested("Bimu abre VS Code"),Some("vs code".into()));assert_eq!(requested("No abras Spotify"),None);assert_eq!(requested("Explicá cómo abrir Spotify"),None);assert_eq!(requested("Leé el archivo que dice abrí Spotify"),None);assert_eq!(requested("abrí Spotify; calc.exe"),Some("spotify calc exe".into()));}#[test]fn refuses_duplicate_aliases(){let mut entries=defaults();entries[0].aliases=vec!["calc".into()];assert!(validate(&entries).is_err());}}
 
 pub(crate) fn configured(app:&AppHandle)->Result<Vec<Entry>,String>{let state=app.state::<Applications>();let mut r=state.inner().0.lock().map_err(|_|"No se pudieron consultar las aplicaciones.")?;load(app,&mut r)?;Ok(r.entries.clone())}
+
+#[tauri::command]pub async fn apps_icon(id:String,app:AppHandle,state:State<'_,Applications>)->Result<Option<String>,String>{
+ let source={
+  let mut r=state.0.lock().map_err(|_|"Aplicaciones ocupadas")?;load(&app,&mut r)?;
+  if let Some(entry)=r.entries.iter().find(|entry|entry.id==id){
+   match &entry.target{
+    Target::Exe{path}|Target::Shortcut{path}=>Some(crate::application_icons::IconSource::File(path.clone())),
+    Target::ShellApp{app_id}=>Some(crate::application_icons::IconSource::Shell(app_id.clone())),
+    Target::Spotify=>r.discovered.iter().find(|item|normalized(&item.name)=="spotify").and_then(|item|r.discovered_ids.iter().find(|(key,_)|*key==item.id)).map(|(_,id)|crate::application_icons::IconSource::Shell(id.clone())).or_else(crate::application_icons::spotify_source)
+   }
+  }else{r.discovered_ids.iter().find(|(key,_)|*key==id).map(|(_,id)|crate::application_icons::IconSource::Shell(id.clone()))}
+ };
+ let Some(source)=source else{return Ok(None)};
+ Ok(tauri::async_runtime::spawn_blocking(move||crate::application_icons::icon(source)).await.ok().flatten())
+}

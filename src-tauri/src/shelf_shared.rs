@@ -17,3 +17,14 @@ pub fn validate(items:&[ShelfMetadata])->Result<(),String>{
  use super::*;
  #[test]fn catalog_accepts_valid_metadata_and_rejects_forged_or_duplicate_ids(){let a=ShelfMetadata{id:"a".repeat(64),name:"informe.pdf".into(),kind:"file".into(),available:true};assert!(validate(&[a.clone()]).is_ok());assert!(validate(&[a.clone(),a.clone()]).is_err());let mut b=a;b.id="../archivo".into();assert!(validate(&[b]).is_err());}
 }
+
+/// A small metadata heartbeat cannot be starved by clipboard traffic.
+pub fn catalog_due(first:bool,dirty:bool,elapsed:std::time::Duration)->bool{first||dirty||elapsed>=std::time::Duration::from_secs(3)}
+#[cfg(test)]mod publication_tests{
+ use super::*;use std::time::Duration;
+ #[test]fn additions_publish_immediately_and_steady_traffic_cannot_starve_catalogs(){
+  assert!(catalog_due(true,false,Duration::ZERO));assert!(catalog_due(false,true,Duration::ZERO));
+  assert!(!catalog_due(false,false,Duration::from_secs(2)));
+  assert!(catalog_due(false,false,Duration::from_secs(3)));
+ }
+}

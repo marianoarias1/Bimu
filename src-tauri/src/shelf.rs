@@ -30,14 +30,14 @@ pub(crate) fn path_for_share(app:&AppHandle,id:&str)->Result<PathBuf,String>{
 }
 pub fn add_paths(app:&AppHandle,paths:Vec<PathBuf>)->Result<Vec<ShelfItem>,String>{
  {let state=app.state::<Shelf>();let _guard=state.0.lock().map_err(|_|"Bandeja ocupada.")?;let mut items=read(app)?;
- for path in paths{if !path.is_absolute()||!path.exists(){continue}let path=path.canonicalize().map_err(|e|e.to_string())?;if items.iter().any(|item|item.path==path){continue}if items.len()>=100{return Err("La bandeja admite hasta 100 elementos.".into())}let id=format!("{:x}",Sha256::digest(path.to_string_lossy().as_bytes()));items.push(StoredItem{id,path});}write(app,&items)?;}
- let _=app.emit("shelf-changed",());combined(app)
+ for path in paths{if !path.is_absolute()||!path.exists(){continue}let path=path.canonicalize().map_err(|e|e.to_string())?;if items.iter().any(|item|item.path==path){continue}if items.len()>=100{return Err("La bandeja admite hasta 100 elementos.".into())}let id=format!("{:x}",Sha256::digest(format!("{}:{}",path.to_string_lossy(),rand::random::<u64>()).as_bytes()));items.push(StoredItem{id,path});}write(app,&items)?;}
+ crate::device_pairing::shelf_changed(app);let _=app.emit("shelf-changed",());combined(app)
 }
 #[tauri::command]pub fn shelf_list(app:AppHandle,_state:State<'_,Shelf>)->Result<Vec<ShelfItem>,String>{combined(&app)}
 #[tauri::command]pub fn shelf_remove(id:String,app:AppHandle,_state:State<'_,Shelf>)->Result<Vec<ShelfItem>,String>{
  if let Some(remote)=id.strip_prefix("peer:"){crate::device_pairing::hide_remote_shelf(&app,remote)?;}
  else{let state=app.state::<Shelf>();let _guard=state.0.lock().map_err(|_|"Bandeja ocupada")?;let mut items=read(&app)?;items.retain(|item|item.id!=id);write(&app,&items)?;}
- let _=app.emit("shelf-changed",());combined(&app)
+ crate::device_pairing::shelf_changed(&app);let _=app.emit("shelf-changed",());combined(&app)
 }
 #[tauri::command]pub fn shelf_open(id:String,app:AppHandle,_state:State<'_,Shelf>)->Result<(),String>{
  if let Some(remote)=id.strip_prefix("peer:"){return crate::device_pairing::request_remote_shelf(&app,remote)}

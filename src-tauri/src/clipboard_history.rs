@@ -61,13 +61,13 @@ fn insert(data:&mut Data,content:Content,origin:String,shareable:bool){
    Content::Image{width,height,rgba,..}=>{let mut clip=arboard::Clipboard::new().map_err(|_|"No se pudo abrir el portapapeles")?;clip.set_image(arboard::ImageData{width:*width,height:*height,bytes:rgba.clone().into()}).map_err(|_|"No se pudo copiar la imagen")?},
   };
   data.last_sequence=sequence();drop(data);
-  if entry.shareable{crate::device_pairing::queue_clipboard(&app,entry.content.payload());}else{crate::device_pairing::queue_clipboard(&app,None);}
+  if entry.shareable&&crate::device_pairing::clipboard_connected(&app){crate::device_pairing::queue_clipboard(&app,entry.content.payload());}else{crate::device_pairing::queue_clipboard(&app,None);}
   return Ok(())
  }
  #[cfg(not(windows))]{let _=(id,app,state);Err("Disponible en Windows".into())}
 }
 /// Apply a validated message from the authenticated peer without re-emitting it.
-#[cfg(windows)]pub(crate) fn apply_remote(app:&AppHandle,payload:ClipboardPayload,peer_name:&str)->Result<(),String>{
+#[cfg(windows)]pub(crate) fn apply_remote(app:&AppHandle,payload:ClipboardPayload,peer_name:&str,file_limit:usize)->Result<(),String>{
  let label:String=peer_name.chars().filter(|c|!c.is_control()).take(64).collect();
  let origin=if label.trim().is_empty(){"Otro equipo".to_string()}else{label};
  let history=app.state::<ClipboardHistory>();let mut data=history.0.lock().map_err(|_|"Portapapeles ocupado")?;
@@ -80,16 +80,16 @@ fn insert(data:&mut Data,content:Content,origin:String,shareable:bool){
    let root=app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?.join("archivos-recibidos");
    std::fs::create_dir_all(&root).map_err(|_|"No se pudo crear la carpeta de archivos recibidos")?;
    let destination=root.join(format!("{:016x}",OsRng.next_u64()));
-   let paths=crate::clipboard_files::unpack(&bundle,&destination)?;
+   let paths=crate::clipboard_files::unpack_with_limit(&bundle,&destination,file_limit)?;
    if crate::clipboard_files_windows::replace(app,&paths).is_err(){let _=std::fs::remove_dir_all(&destination);return Err("No se pudieron copiar los archivos recibidos".into())}
    Content::Files(paths)
   },
-  ClipboardPayload::Files(_)|ClipboardPayload::ShelfCatalog(_)|ClipboardPayload::ShelfRequest{..}|ClipboardPayload::ShelfReply{..}=>return Err("Formato de portapapeles recibido inválido".into()),
+  ClipboardPayload::Limits{..}|ClipboardPayload::Files(_)|ClipboardPayload::ShelfCatalog(_)|ClipboardPayload::ShelfRequest{..}|ClipboardPayload::ShelfReply{..}=>return Err("Formato de portapapeles recibido inválido".into()),
  };
  data.last_sequence=sequence();if !data.paused{insert(&mut data,content,origin,true)}
  drop(data);let _=app.emit("clipboard-history-changed",());Ok(())
 }
-#[cfg(not(windows))]pub(crate) fn apply_remote(_app:&AppHandle,_payload:ClipboardPayload,_peer_name:&str)->Result<(),String>{Err("Disponible en Windows".into())}
+#[cfg(not(windows))]pub(crate) fn apply_remote(_app:&AppHandle,_payload:ClipboardPayload,_peer_name:&str,_file_limit:usize)->Result<(),String>{Err("Disponible en Windows".into())}
 pub fn start(app:AppHandle){
  #[cfg(windows)]std::thread::spawn(move||{let history=app.state::<ClipboardHistory>().inner().clone();loop{
   std::thread::sleep(Duration::from_millis(500));if app.get_webview_window("main").is_none(){break}
