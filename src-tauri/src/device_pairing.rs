@@ -12,10 +12,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct PairStatus { phase:String, code:Option<String>, address:Option<String>, peer:Option<String>, message:Option<String>, linked:bool, transfer_limit_mb:usize, effective_limit_mb:Option<usize> }
-impl Default for PairStatus { fn default()->Self { Self{phase:"idle".into(),code:None,address:None,peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None} } }
+pub struct PairStatus { phase:String, code:Option<String>, address:Option<String>, peer:Option<String>, message:Option<String>, linked:bool, transfer_limit_mb:usize, effective_limit_mb:Option<usize>, limit_configured:bool, is_main:bool, uses_main_limit:bool }
+impl Default for PairStatus { fn default()->Self { Self{phase:"idle".into(),code:None,address:None,peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None,limit_configured:crate::transfer_limits::configured(),is_main:false,uses_main_limit:false} } }
 #[derive(Default)]
-struct Inner { generation:u64, status:PairStatus, socket:Option<TcpStream>, outgoing:Option<ClipboardPayload>, outgoing_revision:u64, preparing:bool, remote_shelf:Vec<ShelfMetadata>, remote_peer:Option<String>, hidden_shelf:HashSet<String>, shelf_messages:VecDeque<ClipboardPayload>, shelf_pending:Option<ShelfPending>, shelf_serving:bool, peer_limit_mb:Option<usize>, limit_dirty:bool }
+struct Inner { generation:u64, status:PairStatus, socket:Option<TcpStream>, outgoing:Option<ClipboardPayload>, outgoing_revision:u64, preparing:bool, remote_shelf:Vec<ShelfMetadata>, remote_peer:Option<String>, hidden_shelf:HashSet<String>, shelf_messages:VecDeque<ClipboardPayload>, shelf_pending:Option<ShelfPending>, shelf_serving:bool, peer_limit_mb:Option<usize>, peer_limit_configured:bool, main:bool, limit_dirty:bool }
 struct ShelfPending {id:String,token:u64,name:String,started:Instant}
 #[derive(Default,Clone)]
 pub struct DevicePairing(Arc<Mutex<Inner>>);
@@ -28,7 +28,7 @@ fn local_ip()->Result<Ipv4Addr,String>{
 fn reset(inner:&mut Inner){
  inner.generation=inner.generation.wrapping_add(1);
  if let Some(socket)=inner.socket.take(){let _=socket.shutdown(Shutdown::Both);}
- inner.peer_limit_mb=None;inner.limit_dirty=false;
+ inner.peer_limit_mb=None;inner.peer_limit_configured=false;inner.main=false;inner.limit_dirty=false;
  inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;
  inner.shelf_messages.clear();inner.shelf_pending=None;inner.shelf_serving=false;
  inner.status=PairStatus::default();
@@ -41,7 +41,7 @@ fn fail(shared:&DevicePairing, generation:u64, msg:&str){
  if let Ok(mut inner)=shared.0.lock(){
   if inner.generation!=generation{return}
   if let Some(socket)=inner.socket.take(){let _=socket.shutdown(Shutdown::Both);}
-  inner.peer_limit_mb=None;inner.limit_dirty=false;
+  inner.peer_limit_mb=None;inner.peer_limit_configured=false;inner.main=false;inner.limit_dirty=false;
   inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;
   inner.shelf_messages.clear();inner.shelf_pending=None;inner.shelf_serving=false;
   inner.status=PairStatus{phase:"error".into(),message:Some(msg.into()),..Default::default()};
@@ -67,7 +67,7 @@ pub(crate) fn queue_clipboard(app:&AppHandle,payload:Option<ClipboardPayload>){
    inner.preparing=true;inner.status.message=Some("Preparando archivos para enviar…".into());drop(inner);
    let app=app.clone();
    thread::spawn(move||{
-    let limit=shared.0.lock().ok().and_then(|i|i.peer_limit_mb).unwrap_or(1).min(crate::transfer_limits::current_mb())*crate::transfer_limits::MIB;
+    let limit=effective_bytes(&shared);
     let result=crate::clipboard_files::pack_with_limit(&paths,limit,&||shared.0.lock().map(|i|i.generation!=generation||i.outgoing_revision!=revision||i.status.phase!="connected").unwrap_or(true));
     let Ok(mut inner)=shared.0.lock() else{return};
     if inner.generation!=generation||inner.outgoing_revision!=revision||inner.status.phase!="connected"{return}
@@ -79,7 +79,9 @@ pub(crate) fn queue_clipboard(app:&AppHandle,payload:Option<ClipboardPayload>){
   other=>{inner.outgoing=other;}
  }
 }
-fn effective_bytes(shared:&DevicePairing)->usize{shared.0.lock().ok().and_then(|i|i.peer_limit_mb).unwrap_or(1).min(crate::transfer_limits::current_mb())*crate::transfer_limits::MIB}
+fn session_limits(inner:&Inner)->(usize,usize){crate::transfer_limits::session_mb(crate::transfer_limits::current_mb(),inner.peer_limit_mb.unwrap_or(1),inner.main,crate::transfer_limits::configured(),inner.peer_limit_configured)}
+fn effective_bytes(shared:&DevicePairing)->usize{shared.0.lock().map(|i|session_limits(&i).0*crate::transfer_limits::MIB).unwrap_or(0)}
+fn receive_bytes(shared:&DevicePairing)->usize{shared.0.lock().map(|i|session_limits(&i).1*crate::transfer_limits::MIB).unwrap_or(0)}
 fn take_outgoing(shared:&DevicePairing,generation:u64)->Option<ClipboardPayload>{
  shared.0.lock().ok().and_then(|mut inner|if inner.generation==generation{inner.outgoing.take()}else{None})
 }
@@ -118,8 +120,8 @@ fn handle_shelf_request(app:&AppHandle,shared:&DevicePairing,generation:u64,id:S
  if !accepted{queue_shelf_reply(shared,generation,ClipboardPayload::ShelfReply{id,token,bundle:None,error:Some("La otra PC ya está preparando un archivo".into())});return}
  let app=app.clone();let shared=shared.clone();
  thread::spawn(move||{
-  let limit=shared.0.lock().ok().and_then(|i|i.peer_limit_mb).unwrap_or(1).min(crate::transfer_limits::current_mb())*crate::transfer_limits::MIB;
-  let result=crate::shelf::path_for_share(&app,&id).and_then(|path|crate::clipboard_files::pack_with_limit(&[path],limit,&||shared.0.lock().map(|i|i.generation!=generation||i.status.phase!="connected"||i.peer_limit_mb.unwrap_or(1).min(crate::transfer_limits::current_mb())*crate::transfer_limits::MIB<limit).unwrap_or(true)));
+  let limit=effective_bytes(&shared);
+  let result=crate::shelf::path_for_share(&app,&id).and_then(|path|crate::clipboard_files::pack_with_limit(&[path],limit,&||shared.0.lock().map(|i|i.generation!=generation||i.status.phase!="connected"||session_limits(&i).0*crate::transfer_limits::MIB<limit).unwrap_or(true)));
   let Ok(mut inner)=shared.0.lock()else{return};if inner.generation!=generation||inner.status.phase!="connected"{return}inner.shelf_serving=false;
   if inner.shelf_messages.len()>=8{return}
   let (bundle,error)=match result{Ok(bundle)=>(Some(bundle),None),Err(error)=>(None,Some(error.chars().take(45).collect()))};
@@ -137,7 +139,7 @@ fn handle_shelf_reply(app:&AppHandle,shared:&DevicePairing,generation:u64,id:Str
   let root=app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?.join("archivos-a-mano-recibidos");
   std::fs::create_dir_all(&root).map_err(|_|"No se pudo crear la carpeta de recepción")?;
   let destination=root.join(format!("{:016x}",OsRng.next_u64()));
-  let paths=crate::clipboard_files::unpack_with_limit(&bundle,&destination,effective_bytes(shared))?;
+  let paths=crate::clipboard_files::unpack_with_limit(&bundle,&destination,receive_bytes(shared))?;
   if shared.0.lock().map(|i|i.generation!=generation||i.status.phase!="connected").unwrap_or(true){let _=std::fs::remove_dir_all(&destination);return Err("La otra PC se desconectó".into())}
   let path=paths.first().ok_or("No se recibió el archivo solicitado")?;
   app.opener().open_path(path.to_string_lossy().into_owned(),None::<&str>).map_err(|_|format!("Se descargó en {}, pero no se pudo abrir",path.display()))?;
@@ -147,9 +149,9 @@ fn handle_shelf_reply(app:&AppHandle,shared:&DevicePairing,generation:u64,id:Str
 }
 fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:ClipboardPayload,peer:&str)->Result<(),String>{
  match payload{
-  ClipboardPayload::Limits(mb)=>{
+  ClipboardPayload::Limits{mb,configured}=>{
    crate::transfer_limits::validate(mb)?;
-   if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation{inner.peer_limit_mb=Some(mb);inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;inner.shelf_messages.retain(|m|!matches!(m,ClipboardPayload::ShelfReply{..}));}}
+   if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation{inner.peer_limit_mb=Some(mb);inner.peer_limit_configured=configured;inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;inner.shelf_messages.retain(|m|!matches!(m,ClipboardPayload::ShelfReply{..}));}}
    Ok(())
   },
   ClipboardPayload::ShelfCatalog(items)=>{
@@ -159,11 +161,11 @@ fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:C
   },
   ClipboardPayload::ShelfRequest{id,token}=>{handle_shelf_request(app,shared,generation,id,token);Ok(())},
   ClipboardPayload::ShelfReply{id,token,bundle,error}=>{handle_shelf_reply(app,shared,generation,id,token,bundle,error);Ok(())},
-  other=>{if !has_outgoing(shared,generation){crate::clipboard_history::apply_remote(app,other,peer,effective_bytes(shared))?;}Ok(())}
+  other=>{if !has_outgoing(shared,generation){crate::clipboard_history::apply_remote(app,other,peer,receive_bytes(shared))?;}Ok(())}
  }
 }
 fn next_shelf_or_clipboard(app:&AppHandle,shared:&DevicePairing,generation:u64,last:&mut Option<Vec<ShelfMetadata>>,last_check:&mut Instant)->Result<Option<ClipboardPayload>,String>{
- if let Ok(mut inner)=shared.0.lock(){if inner.generation!=generation{return Ok(None)}if inner.limit_dirty{inner.limit_dirty=false;return Ok(Some(ClipboardPayload::Limits(crate::transfer_limits::current_mb())))}if let Some(message)=inner.shelf_messages.pop_front(){return Ok(Some(message))}}
+ if let Ok(mut inner)=shared.0.lock(){if inner.generation!=generation{return Ok(None)}if inner.limit_dirty{inner.limit_dirty=false;return Ok(Some(ClipboardPayload::Limits{mb:crate::transfer_limits::current_mb(),configured:crate::transfer_limits::configured()}))}if let Some(message)=inner.shelf_messages.pop_front(){return Ok(Some(message))}}
  if let Some(payload)=take_outgoing(shared,generation){return Ok(Some(payload))}
  if last.is_none()||last_check.elapsed()>=Duration::from_secs(3){
   *last_check=Instant::now();let snapshot=crate::shelf::shared_snapshot(app)?;
@@ -181,8 +183,8 @@ fn device_name()->String {
 fn session(app:AppHandle, shared:DevicePairing, generation:u64, mut channel:SecureChannel, role:Role){
  let socket=match channel.control_stream(){Ok(s)=>s,Err(_)=>{fail(&shared,generation,"No se pudo mantener la conexión.");return}};
  {let Ok(mut inner)=shared.0.lock() else{return};if inner.generation!=generation{return}inner.socket=Some(socket);}
- let own=crate::transfer_limits::hello(&device_name(),crate::transfer_limits::current_mb()).unwrap();
- let exchange=(||->Result<(String,usize),String>{
+ let own=crate::transfer_limits::hello(&device_name(),crate::transfer_limits::current_mb(),crate::transfer_limits::configured()).unwrap();
+ let exchange=(||->Result<(String,usize,bool),String>{
   let received=match role {
    Role::Client=>{channel.send(own.as_bytes())?;channel.receive()?},
    Role::Host=>{let value=channel.receive()?;channel.send(own.as_bytes())?;value},
@@ -191,10 +193,10 @@ fn session(app:AppHandle, shared:DevicePairing, generation:u64, mut channel:Secu
   let versioned=String::from_utf8(received).map_err(|_|"Nombre de equipo inválido")?;
   crate::transfer_limits::parse_hello(&versioned)
  })();
- let (peer,peer_limit)=match exchange{Ok(peer)=>peer,Err(_)=>{fail(&shared,generation,"No se pudo verificar el equipo. Actualizá Bimu en ambas PCs para usar los límites configurables.");return}};
+ let (peer,peer_limit,peer_configured)=match exchange{Ok(peer)=>peer,Err(_)=>{fail(&shared,generation,"No se pudo verificar el equipo. Actualizá Bimu en ambas PCs para usar los límites configurables.");return}};
  {let Ok(mut inner)=shared.0.lock()else{return};if inner.generation!=generation{return}
   if inner.remote_peer.as_deref()!=Some(peer.as_str()){inner.remote_shelf.clear();inner.hidden_shelf.clear();}
-  inner.remote_peer=Some(peer.clone());inner.peer_limit_mb=Some(peer_limit);}
+  inner.remote_peer=Some(peer.clone());inner.peer_limit_mb=Some(peer_limit);inner.peer_limit_configured=peer_configured;inner.main=matches!(role,Role::Host);}
  if !update(&shared,generation,PairStatus{phase:"connected".into(),peer:Some(peer.clone()),..Default::default()}){return}
  let _=app.emit("shelf-changed",());
  let mut last_shelf:Option<Vec<ShelfMetadata>>=None;let mut shelf_checked=Instant::now();
@@ -205,10 +207,10 @@ fn session(app:AppHandle, shared:DevicePairing, generation:u64, mut channel:Secu
    match role{
     Role::Client=>{
      clipboard_protocol::send_turn(&mut channel,next_shelf_or_clipboard(&app,&shared,generation,&mut last_shelf,&mut shelf_checked)?)?;
-     if let Some(payload)=clipboard_protocol::receive_turn_with_limit(&mut channel,effective_bytes(&shared))?{handle_incoming(&app,&shared,generation,payload,&peer)?;}
+     if let Some(payload)=clipboard_protocol::receive_turn_with_limit(&mut channel,receive_bytes(&shared))?{handle_incoming(&app,&shared,generation,payload,&peer)?;}
     },
     Role::Host=>{
-     if let Some(payload)=clipboard_protocol::receive_turn_with_limit(&mut channel,effective_bytes(&shared))?{handle_incoming(&app,&shared,generation,payload,&peer)?;}
+     if let Some(payload)=clipboard_protocol::receive_turn_with_limit(&mut channel,receive_bytes(&shared))?{handle_incoming(&app,&shared,generation,payload,&peer)?;}
      clipboard_protocol::send_turn(&mut channel,next_shelf_or_clipboard(&app,&shared,generation,&mut last_shelf,&mut shelf_checked)?)?;
     },
    }Ok(())
@@ -219,7 +221,13 @@ fn session(app:AppHandle, shared:DevicePairing, generation:u64, mut channel:Secu
  }
 }
 #[tauri::command]
-pub fn device_pairing_status(app:AppHandle,state:State<'_,DevicePairing>)->Result<PairStatus,String>{let mut status=state.0.lock().map_err(|_|"Conexión ocupada")?.status.clone();status.linked=crate::trusted_pairing::load(&app)?.is_some();status.transfer_limit_mb=crate::transfer_limits::current_mb();status.effective_limit_mb=state.0.lock().ok().and_then(|i|if i.status.phase=="connected"{i.peer_limit_mb.map(|p|p.min(status.transfer_limit_mb))}else{None});Ok(status)}
+pub fn device_pairing_status(app:AppHandle,state:State<'_,DevicePairing>)->Result<PairStatus,String>{
+ let inner=state.0.lock().map_err(|_|"Conexión ocupada")?;let mut status=inner.status.clone();
+ status.transfer_limit_mb=crate::transfer_limits::current_mb();status.limit_configured=crate::transfer_limits::configured();
+ status.is_main=inner.main;status.uses_main_limit=inner.status.phase=="connected"&&if inner.main{status.limit_configured}else{inner.peer_limit_configured};
+ status.effective_limit_mb=if inner.status.phase=="connected"{Some(session_limits(&inner).0)}else{None};drop(inner);
+ let trust=crate::trusted_pairing::load(&app)?;status.linked=trust.is_some();if status.phase!="connected"{status.is_main=trust.map(|t|t.host).unwrap_or(false)}Ok(status)
+}
 #[tauri::command]
 pub fn device_pairing_disconnect(app:AppHandle,state:State<'_,DevicePairing>)->Result<(),String>{let mut inner=state.0.lock().map_err(|_|"Conexión ocupada")?;reset(&mut inner);drop(inner);let _=app.emit("shelf-changed",());Ok(())}
 #[tauri::command]
@@ -232,7 +240,7 @@ pub fn device_pairing_host(app:AppHandle,state:State<'_,DevicePairing>)->Result<
  let port=listener.local_addr().map_err(|_|"No se pudo obtener el puerto")?.port();
  let code=format!("{:06}",OsRng.gen_range(0..1_000_000u32));
  let shared=state.inner().clone();
- let (generation,status)={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;reset(&mut inner);inner.status=PairStatus{phase:"waiting".into(),code:Some(code.clone()),address:Some(SocketAddrV4::new(ip,port).to_string()),peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None};(inner.generation,inner.status.clone())};
+ let (generation,status)={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;reset(&mut inner);inner.status=PairStatus{phase:"waiting".into(),code:Some(code.clone()),address:Some(SocketAddrV4::new(ip,port).to_string()),peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None,limit_configured:crate::transfer_limits::configured(),is_main:false,uses_main_limit:false};(inner.generation,inner.status.clone())};
  let _=app.emit("shelf-changed",());
  thread::spawn(move||{
   let discovery=crate::pairing_discovery::advertise(&device_name(),port).ok();
@@ -342,14 +350,14 @@ pub fn start_reconnect(app:AppHandle){
 // Persist just a small integer. No file buffers exist merely by setting a limit.
 fn limit_path(app:&AppHandle)->Result<std::path::PathBuf,String>{Ok(app.path().app_config_dir().map_err(|_|"No se pudo ubicar la configuración")?.join("transfer-limit.json"))}
 pub fn load_transfer_limit(app:&AppHandle){
- if let Ok(path)=limit_path(app){if let Ok(meta)=std::fs::metadata(&path){if meta.len()<=128{if let Ok(bytes)=std::fs::read(path){if let Ok(mb)=serde_json::from_slice::<usize>(&bytes){let _=crate::transfer_limits::set_mb(mb);}}}}}
+ if let Ok(path)=limit_path(app){if let Ok(meta)=std::fs::metadata(&path){if meta.len()<=128{if let Ok(bytes)=std::fs::read(path){if let Ok(Some(mb))=serde_json::from_slice::<Option<usize>>(&bytes){let _=crate::transfer_limits::set_mb(mb);}}}}}
 }
 #[tauri::command]
-pub fn device_pairing_set_limit(mb:usize,app:AppHandle,state:State<'_,DevicePairing>)->Result<(),String>{
- crate::transfer_limits::validate(mb)?;
+pub fn device_pairing_set_limit(mb:Option<usize>,app:AppHandle,state:State<'_,DevicePairing>)->Result<(),String>{
+ if let Some(mb)=mb{crate::transfer_limits::validate(mb)?;}
  let mut inner=state.0.lock().map_err(|_|"Conexión ocupada")?;
- crate::config_migration::write_atomic(&limit_path(&app)?,mb.to_string().as_bytes())?;
- crate::transfer_limits::set_mb(mb)?;
+ crate::config_migration::write_atomic(&limit_path(&app)?,serde_json::to_string(&mb).map_err(|_|"Límite inválido")?.as_bytes())?;
+ if let Some(mb)=mb{crate::transfer_limits::set_mb(mb)?;}else{crate::transfer_limits::clear();}
  inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;
  inner.shelf_messages.retain(|m|!matches!(m,ClipboardPayload::ShelfReply{..}));
  inner.limit_dirty=inner.status.phase=="connected";

@@ -29,9 +29,9 @@ export function MusicEdge({active,edge,native}){
  },[active,edge,native,lateral])
  if(!active)return null
  return <svg ref={svg} className={`bimu-music-edge edge-${edge}`} aria-hidden="true" focusable="false" preserveAspectRatio="none">
-  <defs><filter ref={filterNode} id={filter} filterUnits="userSpaceOnUse" x="-8" y="-8" width="24" height="24" colorInterpolationFilters="sRGB"><feGaussianBlur stdDeviation="1.6"/></filter><linearGradient id={gradient} x1="0" y1="0" x2={lateral?'0':'1'} y2={lateral?'1':'0'}><stop offset="15%" stopColor="var(--audio-accent)" stopOpacity="0"/><stop offset="35%" stopColor="var(--audio-accent)" stopOpacity=".5"/><stop offset="65%" stopColor="var(--audio-accent)" stopOpacity=".5"/><stop offset="85%" stopColor="var(--audio-accent)" stopOpacity="0"/></linearGradient></defs>
+  <defs><filter ref={filterNode} id={filter} filterUnits="userSpaceOnUse" x="-8" y="-8" width="24" height="24" colorInterpolationFilters="sRGB"><feGaussianBlur stdDeviation="1.6"/></filter><linearGradient id={gradient} x1="0" y1="0" x2={lateral?'0':'1'} y2={lateral?'1':'0'}><stop offset="15%" stopColor="var(--audio-accent)" stopOpacity="0"/><stop offset="35%" stopColor="var(--audio-accent)" stopOpacity=".72"/><stop offset="65%" stopColor="var(--audio-accent)" stopOpacity=".72"/><stop offset="85%" stopColor="var(--audio-accent)" stopOpacity="0"/></linearGradient></defs>
   <path ref={fill} className="music-edge-fill"/>
-  <path ref={glow} fill="none" stroke={`url(#${gradient})`} strokeWidth="3" filter={`url(#${filter})`} className="music-edge-glow"/>
-  <path ref={line} fill="none" stroke={`url(#${gradient})`} strokeWidth=".6" className="music-edge-line"/>
+  <path ref={glow} fill="none" stroke={`url(#${gradient})`} strokeWidth="3.5" filter={`url(#${filter})`} className="music-edge-glow"/>
+  <path ref={line} fill="none" stroke={`url(#${gradient})`} strokeWidth=".85" className="music-edge-line"/>
  </svg>
 }

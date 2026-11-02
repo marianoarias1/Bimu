@@ -101,6 +101,7 @@ pub fn reconnect(mut stream: TcpStream, role: Role, psk: &[u8; 32]) -> Result<Se
 }
 pub struct SecureChannel { stream: TcpStream, transport: snow::TransportState }
 impl SecureChannel {
+    pub(crate) fn receive_timeout(&self,seconds:u64)->Result<(),String>{self.stream.set_read_timeout(Some(Duration::from_secs(seconds))).map_err(|e|e.to_string())}
     pub(crate) fn control_stream(&self)->std::io::Result<TcpStream>{self.stream.try_clone()}
     pub fn send(&mut self, data: &[u8]) -> Result<(), String> {
         if data.len() > MAX_PLAINTEXT { return Err("message too large".into()); }

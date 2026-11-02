@@ -10,7 +10,7 @@ const MAX_DEPTH:usize=16;
 #[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileBundle{roots:Vec<String>,entries:Vec<FileEntry>}
-impl FileBundle{pub fn single_root(&self)->Option<&str>{if self.roots.len()==1{Some(&self.roots[0])}else{None}}}
+impl FileBundle{pub fn encoded_bytes(&self)->usize{self.entries.iter().map(|e|e.data.len()).sum()}pub fn single_root(&self)->Option<&str>{if self.roots.len()==1{Some(&self.roots[0])}else{None}}}
 #[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FileEntry{path:String,folder:bool,data:String}

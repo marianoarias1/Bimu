@@ -18,7 +18,7 @@ assert.ok(notchSize('top','peek','M','lyrics')[1]>notchSize('top','peek','M','ho
 assert.ok(notchSize('top','idle','M','lyrics')[0]>notchSize('top','idle','M','home')[0])
 for(const edge of ['left','right']){
  const idle=notchSize(edge,'idle'),peek=notchSize(edge,'peek')
- assert.ok(idle[0]<=55&&idle[1]<=170,'a small side tab at rest')
+ assert.ok(idle[0]<=40&&idle[1]<=126,'a small side tab at rest')
  assert.ok(peek[1]>=idle[1],'hover expands inward without a tall empty column')
  assert.ok(peek[0]-64>=220,'quick chat has enough horizontal reading space')
  const area={x:-1920,y:0,width:1920,height:1040},a=dockPosition(area,...idle,edge,.5),b=dockPosition(area,...peek,edge,.5)

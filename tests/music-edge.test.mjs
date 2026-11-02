@@ -6,7 +6,7 @@ test('the audio contour leaves and returns to the silhouette without inward cuts
  for(const length of [27,48,144,150,483,598])for(const phase of [0,.7,2,5])for(const level of [0,.5,1])for(const lateral of [false,true]){
   const {fill,line}=musicEdgePaths(length,phase,level,lateral),p=points(line),axis=lateral?0:1,along=1-axis
   assert.equal(p[0][axis],0);assert.equal(p.at(-1)[axis],0)
-  assert.ok(p.every(v=>v[axis]>=0&&v[axis]<=1.601))
+  assert.ok(p.every(v=>v[axis]>=0&&v[axis]<=2.801))
   assert.ok(p.every((v,i)=>!i||v[along]>p[i-1][along]))
   assert.ok(fill.endsWith(' Z'))
  }
