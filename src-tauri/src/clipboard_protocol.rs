@@ -158,3 +158,34 @@ fn receive_payload(channel:&mut SecureChannel,file_limit:usize)->Result<Option<C
   let mut c=pair(TcpStream::connect(addr).unwrap(),Role::Client,"123456").unwrap();send_turn(&mut c,Some(ClipboardPayload::FileBundle(bundle))).unwrap();receiver.join().unwrap();fs::remove_dir_all(dir).unwrap();
  }
 }
+
+#[cfg(test)]mod folder_regression_tests{
+ use super::*;use crate::{pairing_core::Role,pairing_transport::pair,transfer_limits::{self,MIB}};
+ use std::{fs,io::{Seek,SeekFrom,Write},net::{TcpListener,TcpStream},thread,time::{SystemTime,UNIX_EPOCH}};
+ #[test]fn shelf_folder_70mb_is_listed_then_downloaded_with_main_250_secondary_30(){
+  let dir=std::env::temp_dir().join(format!("bimu-shelf70-{}",SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+  let folder=dir.join("Proyecto70");fs::create_dir_all(folder.join("subcarpeta")).unwrap();
+  for name in ["primero.bin","subcarpeta/segundo.bin"]{let mut f=fs::File::create(folder.join(name)).unwrap();f.set_len((35*MIB)as u64).unwrap();f.write_all(b"inicio").unwrap();f.seek(SeekFrom::End(-3)).unwrap();f.write_all(b"fin").unwrap();}
+  let bundle=crate::clipboard_files::pack_with_limit(&[folder],250*MIB,&||false).unwrap();
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();let id="b".repeat(64);let host_id=id.clone();
+  let host=thread::spawn(move||{
+   let(s,_)=listener.accept().unwrap();let mut c=pair(s,Role::Host,"123456").unwrap();
+   c.send(transfer_limits::hello("Principal",250,true).unwrap().as_bytes()).unwrap();
+   send_turn(&mut c,Some(ClipboardPayload::ShelfCatalog(vec![ShelfMetadata{id:host_id.clone(),name:"Proyecto70".into(),kind:"folder".into(),available:true}]))).unwrap();
+   assert_eq!(receive_turn_with_limit(&mut c,250*MIB).unwrap(),Some(ClipboardPayload::ShelfRequest{id:host_id.clone(),token:7}));
+   send_turn(&mut c,Some(ClipboardPayload::ShelfReply{id:host_id,token:7,bundle:Some(bundle),error:None})).unwrap();
+   assert_eq!(receive_turn_with_limit(&mut c,250*MIB).unwrap(),None);
+  });
+  let mut c=pair(TcpStream::connect(addr).unwrap(),Role::Client,"123456").unwrap();
+  let(_,peer,configured)=transfer_limits::parse_hello(std::str::from_utf8(&c.receive().unwrap()).unwrap()).unwrap();
+  let(send,receive)=transfer_limits::session_mb(30,peer,false,true,configured);assert_eq!((send,receive),(250,250));
+  let Some(ClipboardPayload::ShelfCatalog(items))=receive_turn_with_limit(&mut c,receive*MIB).unwrap()else{panic!("missing catalog")};
+  assert_eq!(items.len(),1);assert_eq!(items[0].kind,"folder");assert!(items[0].available);
+  send_turn(&mut c,Some(ClipboardPayload::ShelfRequest{id:id.clone(),token:7})).unwrap();
+  let Some(ClipboardPayload::ShelfReply{bundle:Some(b),error:None,..})=receive_turn_with_limit(&mut c,receive*MIB).unwrap()else{panic!("missing folder")};
+  assert!(crate::clipboard_files::unpack_with_limit(&b,&dir.join("too-small"),30*MIB).is_err());assert!(!dir.join("too-small").exists());
+  crate::clipboard_files::unpack_with_limit(&b,&dir.join("received"),receive*MIB).unwrap();
+  for name in ["primero.bin","subcarpeta/segundo.bin"]{let bytes=fs::read(dir.join("received/Proyecto70").join(name)).unwrap();assert_eq!(bytes.len(),35*MIB);assert_eq!(&bytes[..6],b"inicio");assert_eq!(&bytes[bytes.len()-3..],b"fin");}
+  send_turn(&mut c,None).unwrap();host.join().unwrap();fs::remove_dir_all(dir).unwrap();
+ }
+}

@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub struct PairStatus { phase:String, code:Option<String>, address:Option<String>, peer:Option<String>, message:Option<String>, linked:bool, transfer_limit_mb:usize, effective_limit_mb:Option<usize>, limit_configured:bool, is_main:bool, uses_main_limit:bool }
 impl Default for PairStatus { fn default()->Self { Self{phase:"idle".into(),code:None,address:None,peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None,limit_configured:crate::transfer_limits::configured(),is_main:false,uses_main_limit:false} } }
 #[derive(Default)]
-struct Inner { generation:u64, status:PairStatus, socket:Option<TcpStream>, outgoing:Option<ClipboardPayload>, outgoing_revision:u64, preparing:bool, remote_shelf:Vec<ShelfMetadata>, remote_peer:Option<String>, hidden_shelf:HashSet<String>, shelf_messages:VecDeque<ClipboardPayload>, shelf_pending:Option<ShelfPending>, shelf_serving:bool, peer_limit_mb:Option<usize>, peer_limit_configured:bool, main:bool, limit_dirty:bool }
+struct Inner { generation:u64, status:PairStatus, socket:Option<TcpStream>, outgoing:Option<ClipboardPayload>, outgoing_revision:u64, preparing:bool, remote_shelf:Vec<ShelfMetadata>, remote_peer:Option<String>, hidden_shelf:HashSet<String>, shelf_messages:VecDeque<ClipboardPayload>, shelf_pending:Option<ShelfPending>, shelf_serving:bool, peer_limit_mb:Option<usize>, peer_limit_configured:bool, main:bool, limit_dirty:bool, shelf_dirty:bool }
 struct ShelfPending {id:String,token:u64,name:String,started:Instant}
 #[derive(Default,Clone)]
 pub struct DevicePairing(Arc<Mutex<Inner>>);
@@ -28,7 +28,7 @@ fn local_ip()->Result<Ipv4Addr,String>{
 fn reset(inner:&mut Inner){
  inner.generation=inner.generation.wrapping_add(1);
  if let Some(socket)=inner.socket.take(){let _=socket.shutdown(Shutdown::Both);}
- inner.peer_limit_mb=None;inner.peer_limit_configured=false;inner.main=false;inner.limit_dirty=false;
+ inner.shelf_dirty=true;inner.peer_limit_mb=None;inner.peer_limit_configured=false;inner.main=false;inner.limit_dirty=false;
  inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;
  inner.shelf_messages.clear();inner.shelf_pending=None;inner.shelf_serving=false;
  inner.status=PairStatus::default();
@@ -41,7 +41,7 @@ fn fail(shared:&DevicePairing, generation:u64, msg:&str){
  if let Ok(mut inner)=shared.0.lock(){
   if inner.generation!=generation{return}
   if let Some(socket)=inner.socket.take(){let _=socket.shutdown(Shutdown::Both);}
-  inner.peer_limit_mb=None;inner.peer_limit_configured=false;inner.main=false;inner.limit_dirty=false;
+  inner.shelf_dirty=true;inner.peer_limit_mb=None;inner.peer_limit_configured=false;inner.main=false;inner.limit_dirty=false;
   inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;
   inner.shelf_messages.clear();inner.shelf_pending=None;inner.shelf_serving=false;
   inner.status=PairStatus{phase:"error".into(),message:Some(msg.into()),..Default::default()};
@@ -88,6 +88,9 @@ fn take_outgoing(shared:&DevicePairing,generation:u64)->Option<ClipboardPayload>
 fn has_outgoing(shared:&DevicePairing,generation:u64)->bool{
  shared.0.lock().map(|inner|inner.generation==generation&&(inner.preparing||inner.outgoing.is_some())).unwrap_or(false)
 }
+/// Called after local shelf writes, after releasing its lock. Metadata changes
+/// must not sit behind continuous clipboard traffic or a prepared file payload.
+pub(crate) fn shelf_changed(app:&AppHandle){let shared=app.state::<DevicePairing>();if let Ok(mut inner)=shared.0.lock(){inner.shelf_dirty=true;};}
 pub(crate) fn remote_shelf(app:&AppHandle)->Vec<crate::shelf::ShelfItem>{
  let state=app.state::<DevicePairing>();let Ok(inner)=state.0.lock() else{return vec![]};
  let connected=inner.status.phase=="connected";
@@ -156,7 +159,7 @@ fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:C
   },
   ClipboardPayload::ShelfCatalog(items)=>{
    crate::shelf_shared::validate(&items)?;
-   let mut changed=false;if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation&&inner.remote_shelf!=items{inner.remote_shelf=items;changed=true}}
+   let mut changed=false;if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation&&inner.remote_shelf!=items{inner.hidden_shelf.retain(|id|items.iter().any(|item|&item.id==id));inner.remote_shelf=items;changed=true}}
    if changed{let _=app.emit("shelf-changed",());}Ok(())
   },
   ClipboardPayload::ShelfRequest{id,token}=>{handle_shelf_request(app,shared,generation,id,token);Ok(())},
@@ -166,11 +169,15 @@ fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:C
 }
 fn next_shelf_or_clipboard(app:&AppHandle,shared:&DevicePairing,generation:u64,last:&mut Option<Vec<ShelfMetadata>>,last_check:&mut Instant)->Result<Option<ClipboardPayload>,String>{
  if let Ok(mut inner)=shared.0.lock(){if inner.generation!=generation{return Ok(None)}if inner.limit_dirty{inner.limit_dirty=false;return Ok(Some(ClipboardPayload::Limits{mb:crate::transfer_limits::current_mb(),configured:crate::transfer_limits::configured()}))}if let Some(message)=inner.shelf_messages.pop_front(){return Ok(Some(message))}}
- if let Some(payload)=take_outgoing(shared,generation){return Ok(Some(payload))}
- if last.is_none()||last_check.elapsed()>=Duration::from_secs(3){
+ // Catalog publication is independent of the file-size limit and takes a
+ // bounded turn before clipboard payloads. Re-advertise every three seconds so
+ // a stale cache can recover without disconnecting or touching local limits.
+ let dirty={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;let dirty=inner.shelf_dirty;inner.shelf_dirty=false;dirty};
+ if crate::shelf_shared::catalog_due(last.is_none(),dirty,last_check.elapsed()){
   *last_check=Instant::now();let snapshot=crate::shelf::shared_snapshot(app)?;
-  if last.as_ref()!=Some(&snapshot){*last=Some(snapshot.clone());return Ok(Some(ClipboardPayload::ShelfCatalog(snapshot)))}
- }Ok(None)
+  *last=Some(snapshot.clone());return Ok(Some(ClipboardPayload::ShelfCatalog(snapshot)))
+ }
+ Ok(take_outgoing(shared,generation))
 }
 fn rollback_trust(app:&AppHandle,shared:&DevicePairing,trust:&crate::trusted_pairing::Trust){
  if let Ok(_inner)=shared.0.lock(){if crate::trusted_pairing::load(app).ok().flatten().map(|t|t.key)==Some(trust.key){let _=crate::trusted_pairing::forget(app);}}

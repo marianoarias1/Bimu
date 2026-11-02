@@ -650,7 +650,7 @@ html[data-edge=right] :is(.notch-surface,.quick-shell,.glass-shell)::after{right
 .desktop.compact .notch-surface>.bimu-music-edge.edge-left{top:0;left:100%;width:8px;height:100%}
 .desktop.compact .notch-surface>.bimu-music-edge.edge-right{top:0;left:auto;right:100%;width:8px;height:100%;transform:scaleX(-1)}
 .bimu-music-edge .music-edge-fill{fill:var(--edge-fill)}
-.bimu-music-edge .music-edge-glow{opacity:.6}.bimu-music-edge .music-edge-line{opacity:.85;stroke-linecap:round;stroke-linejoin:round}
+.bimu-music-edge .music-edge-glow{opacity:.67}.bimu-music-edge .music-edge-line{opacity:.9;stroke-linecap:round;stroke-linejoin:round}
 html[data-lyrics=true] .desktop.compact .notch-surface>.bimu-music-edge:not(.edge-bottom){--edge-fill:color-mix(in srgb,rgb(var(--notch-rgb,9,10,13)) 55%,rgb(var(--cover-glow,82,75,65)) 45%)}
 /* Preserve a small cushion for the diffuse light while avoiding a visible seam. */
 .desktop.compact .notch-surface>.bimu-music-edge.edge-top{margin-top:-.2px}.desktop.compact .notch-surface>.bimu-music-edge.edge-bottom{margin-bottom:-.2px}.desktop.compact .notch-surface>.bimu-music-edge.edge-left{margin-left:-.2px}.desktop.compact .notch-surface>.bimu-music-edge.edge-right{margin-right:-.2px}

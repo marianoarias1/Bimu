@@ -87,7 +87,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
   useEffect(()=>{try{localStorage.setItem('bimu-pages-v1',JSON.stringify(pages))}catch{};if(nativeMode&&!pages.some(page=>page.id==='clipboard'&&page.enabled))invoke('clipboard_history_pause',{paused:true}).catch(()=>{})},[pages])
   const [notchPage,setNotchPage]=useState(()=>readPages().find(page=>page.enabled).id),[shelfItems,setShelfItems]=useState([]),[shelfError,setShelfError]=useState(''),[settingsInitial,setSettingsInitial]=useState('app'),[modeResult,setModeResult]=useState(null),[runningMode,setRunningMode]=useState(null)
   const refreshShelf=async()=>{if(!nativeMode)return;try{setShelfItems(await invoke('shelf_list'))}catch(e){setShelfError(String(e))}}
-  useEffect(()=>{if(!nativeMode)return;let active=true,off=[];refreshShelf();Promise.all([listen('shelf-changed',()=>{if(active)refreshShelf()}),listen('shelf-error',({payload})=>{if(active)setShelfError(String(payload))})]).then(list=>{if(active)off=list;else list.forEach(fn=>fn())}).catch(()=>{});return()=>{active=false;off.forEach(fn=>fn())}},[])
+  useEffect(()=>{if(!nativeMode)return;let active=true,off=[];Promise.all([listen('shelf-changed',()=>{if(active)refreshShelf()}),listen('shelf-error',({payload})=>{if(active)setShelfError(String(payload))})]).then(list=>{if(active){off=list;refreshShelf()}else list.forEach(fn=>fn())}).catch(()=>{});return()=>{active=false;off.forEach(fn=>fn())}},[])
   const [pageMotion,setPageMotion]=useState({direction:0,sequence:0})
   const targetPage=useRef(notchPage),pageGhost=useRef(null),pageTimer=useRef()
   const clearPageGhost=()=>{clearTimeout(pageTimer.current);pageGhost.current?.remove();pageGhost.current=null}
@@ -122,6 +122,9 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
   const [hovered,setHovered]=useState(false),[hoverPreview,setHoverPreview]=useState(false),[manualRetracted,setManualRetracted]=useState(false)
   const [avoidOverlap,setAvoidOverlap]=useState(()=>saved('bimu-avoid-overlap','true')!=='false'),[overlapping,setOverlapping]=useState(false)
   useEffect(()=>{try{localStorage.setItem('bimu-avoid-overlap',String(avoidOverlap))}catch{}},[avoidOverlap])
+  // Reconcile while the shelf is actually visible; events remain the fast path.
+  // No background polling or file reads for hidden pages.
+  useEffect(()=>{if(!nativeMode||!hovered||expanded||notchPage!=='shelf')return;refreshShelf();const timer=setInterval(refreshShelf,2000);return()=>clearInterval(timer)},[nativeMode,hovered,expanded,notchPage])
   const lyricsVisible=lyricsOpen&&(!hovered||notchPage==='music')
   useEffect(()=>{document.documentElement.dataset.lyrics=String(lyricsVisible);return()=>{delete document.documentElement.dataset.lyrics}},[lyricsVisible])
   const hoverTimer=useRef()
