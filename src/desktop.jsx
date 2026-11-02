@@ -1,3 +1,4 @@
+import {MusicEdge} from './MusicEdge'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { isTauri, invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalSize, PhysicalPosition, currentMonitor, cursorPosition } from '@tauri-apps/api/window'
@@ -68,8 +69,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
   const [clock,setClock]=useState(()=>new Date())
   useEffect(()=>{const timer=setInterval(()=>setClock(new Date()),10000);return()=>clearInterval(timer)},[])
   const [media,setMedia]=useState(null),[mediaError,setMediaError]=useState('')
-  useEffect(()=>{if(!nativeMode)return;let active=true,off,phase=0,smoothed=0;listen('audio-output-peak',({payload})=>{if(!active)return;const raw=Math.max(0,Math.min(1,Number(payload)||0));smoothed=raw>smoothed?raw:smoothed*.7+raw*.3;const level=Math.min(1,Math.pow(smoothed,.5)*1.9);phase+=.72;const root=document.documentElement;for(let i=0;i<3;i++){const wave=.16+.84*(.5+.5*Math.sin(phase+i*2.1));root.style.setProperty('--audio-bar-'+i,String(.12+level*.88*wave))}}).then(fn=>{if(active)off=fn;else fn()}).catch(()=>{});return()=>{active=false;off?.();invoke('audio_meter_enabled',{enabled:false}).catch(()=>{})}},[])
-  useEffect(()=>{if(nativeMode)invoke('audio_meter_enabled',{enabled:!!media?.playing}).catch(()=>{});if(!media?.playing){const root=document.documentElement;for(let i=0;i<3;i++)root.style.setProperty('--audio-bar-'+i,'.2')}},[media?.playing])
+
 
   useEffect(()=>{
     const root=document.documentElement;let active=true
@@ -182,11 +182,12 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
   return <>
     {drop.active&&<section className="drop-surface" aria-label="Recibir archivos o carpeta"><div className="drop-outline"/>{drop.stage==='hover'&&<div className="drop-shelf-feedback" role="status"><span className="drop-shelf-icon"><Upload size={22}/></span><strong>Soltá para guardar</strong><small>Tus archivos van a quedar a mano</small></div>}{drop.stage==='preparing'&&<div className="drop-shelf-feedback" role="status"><span className="drop-shelf-icon"><LoaderCircle size={22}/></span><strong>Guardando…</strong></div>}{drop.stage==='error'&&<div className="drop-error" role="alert"><p>{drop.error}</p><button onClick={drop.reset}>Entendido</button></div>}</section>}
     {!expanded&&!drop.active&&<button className="notch-surface" aria-label="Abrir compañero" {...dock.handlers} onClick={openNotch}>
-      {dock.state==='idle'&&capsNotice!==null?<span className="caps-notice" role="status"><CapsLabel enabled={capsNotice}/></span>:dock.state==='idle'&&lyricsOpen&&lyrics.status==='synced'&&currentLyric>=0?<span className="compact-lyric-inline"><Music2 size={13}/><span className="compact-lyric-transition" key={`${media?.title}-${currentLyric}`}>{lyrics.lines[currentLyric]?.text}</span></span>:<span className="notch-face" aria-hidden="true"><span className={'notch-avatar-slot bimu-eyes'+(mood==='sleepy'?' bimu-eyes-sleepy':'')+(media?.playing?' bimu-listening':'')}><i/><i/></span>{media?.playing&&<span className="audio-equalizer"><b/><b/><b/></span>}</span>}
+      {dock.state==='idle'&&capsNotice!==null?<span className="caps-notice" role="status"><CapsLabel enabled={capsNotice}/></span>:dock.state==='idle'&&lyricsOpen&&lyrics.status==='synced'&&currentLyric>=0?<span className="compact-lyric-inline"><Music2 size={13}/><span className="compact-lyric-transition" key={`${media?.title}-${currentLyric}`}>{lyrics.lines[currentLyric]?.text}</span></span>:<span className="notch-face" aria-hidden="true"><span className={'notch-avatar-slot bimu-eyes'+(mood==='sleepy'?' bimu-eyes-sleepy':'')+(media?.playing?' bimu-listening':'')}><i/><i/></span></span>}
       <span className="notch-copy"><strong>Tu compañero</strong><small>{mood==='sleepy'?'Descansando':'Acá, con vos'}</small></span>
       {!(dock.state==='idle'&&(capsNotice!==null||(lyricsOpen&&lyrics.status==='synced'&&currentLyric>=0)))&&<><time className="notch-clock" aria-label={clock.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})}>{dock.lateral?<><span>{clock.getHours().toString().padStart(2,'0')}</span><span className="clock-colon" aria-hidden="true">:</span><span>{clock.getMinutes().toString().padStart(2,'0')}</span></>:clock.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})}</time>{statusIcon}</>}
       <span className="notch-indicator"><span className="status-dot"/></span>
       <span className="notch-grip"><Grip size={12}/></span>
+      <MusicEdge active={!!media?.playing&&dock.state!=='retracted'} edge={dock.edge} native={nativeMode}/>
     </button>}
     {!expanded&&!drop.active&&<section className="notch-player" aria-label={{music:'Reproductor de música',shelf:'Bandeja de archivos',modes:'Atajos rápidos',weather:'Clima',clipboard:'Portapapeles'}[notchPage]}>
       <div className="player-heading"><button className="notch-move-button" aria-label="Arrastrar Bimu por el borde seleccionado" title="Arrastrar para mover" {...dock.handlers}><Grip size={15}/></button>{capsNotice!==null?<span className="caps-peek" role="status"><CapsLabel enabled={capsNotice}/></span>:<><span className="player-date">{clock.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric'}).replaceAll('.','')}</span><time>{clock.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})}</time></>}</div>
