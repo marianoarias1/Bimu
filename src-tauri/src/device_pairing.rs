@@ -7,13 +7,13 @@ use crate::shelf_shared::ShelfMetadata;
 use std::collections::{HashSet,VecDeque};
 use tauri_plugin_opener::OpenerExt;
 use serde::Serialize;
-use std::{net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket}, sync::{Arc, Mutex}, thread, time::{Duration, Instant}};
+use std::{net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket}, sync::{Arc, Mutex}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct PairStatus { phase:String, code:Option<String>, address:Option<String>, peer:Option<String>, message:Option<String>, linked:bool, transfer_limit_mb:usize, effective_limit_mb:Option<usize>, limit_configured:bool, is_main:bool, uses_main_limit:bool }
-impl Default for PairStatus { fn default()->Self { Self{phase:"idle".into(),code:None,address:None,peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None,limit_configured:crate::transfer_limits::configured(),is_main:false,uses_main_limit:false} } }
+pub struct PairStatus { phase:String, code:Option<String>, address:Option<String>, peer:Option<String>, message:Option<String>, linked:bool, transfer_limit_mb:usize, effective_limit_mb:Option<usize>, limit_configured:bool, is_main:bool, uses_main_limit:bool, local_name:String, code_expires_at:Option<u64> }
+impl Default for PairStatus { fn default()->Self { Self{phase:"idle".into(),code:None,address:None,peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None,limit_configured:crate::transfer_limits::configured(),is_main:false,uses_main_limit:false,local_name:device_name(),code_expires_at:None} } }
 #[derive(Default)]
 struct Inner { generation:u64, status:PairStatus, socket:Option<TcpStream>, outgoing:Option<ClipboardPayload>, outgoing_revision:u64, preparing:bool, remote_shelf:Vec<ShelfMetadata>, remote_peer:Option<String>, hidden_shelf:HashSet<String>, shelf_messages:VecDeque<ClipboardPayload>, shelf_pending:Option<ShelfPending>, shelf_serving:bool, peer_limit_mb:Option<usize>, peer_limit_configured:bool, main:bool, limit_dirty:bool, shelf_dirty:bool }
 struct ShelfPending {id:String,token:u64,name:String,started:Instant}
@@ -247,7 +247,7 @@ pub fn device_pairing_host(app:AppHandle,state:State<'_,DevicePairing>)->Result<
  let port=listener.local_addr().map_err(|_|"No se pudo obtener el puerto")?.port();
  let code=format!("{:06}",OsRng.gen_range(0..1_000_000u32));
  let shared=state.inner().clone();
- let (generation,status)={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;reset(&mut inner);inner.status=PairStatus{phase:"waiting".into(),code:Some(code.clone()),address:Some(SocketAddrV4::new(ip,port).to_string()),peer:None,message:None,linked:false,transfer_limit_mb:crate::transfer_limits::current_mb(),effective_limit_mb:None,limit_configured:crate::transfer_limits::configured(),is_main:false,uses_main_limit:false};(inner.generation,inner.status.clone())};
+ let (generation,status)={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;reset(&mut inner);inner.status=PairStatus{phase:"waiting".into(),code:Some(code.clone()),address:Some(SocketAddrV4::new(ip,port).to_string()),code_expires_at:Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()+120),..Default::default()};(inner.generation,inner.status.clone())};
  let _=app.emit("shelf-changed",());
  thread::spawn(move||{
   let discovery=crate::pairing_discovery::advertise(&device_name(),port).ok();
