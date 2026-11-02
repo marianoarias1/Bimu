@@ -4,7 +4,7 @@ import {chromium} from 'playwright-core'
 import {readFile,mkdir} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import {notchSize} from '../src/dock-geometry.js'
-const css=await readFile(new URL('../src/desktop.css',import.meta.url),'utf8')
+const css=(await readFile(new URL('../src/styles.css',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../src/desktop.css',import.meta.url),'utf8'))
 const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{}),args:['--no-sandbox']})
 const page=await browser.newPage({viewport:{width:1000,height:700}})
 await mkdir('test-results/notch-reveal',{recursive:true})
