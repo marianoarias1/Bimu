@@ -847,7 +847,7 @@ html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface{--lyrics
 html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface,
 html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::before,
 html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::after{
- background:var(--lyrics-background);background-size:var(--lyrics-width,100%) var(--lyrics-height,100%);background-repeat:no-repeat;box-shadow:none;
+ background:var(--lyrics-background);background-size:var(--lyrics-width,100%) var(--lyrics-height,100%);background-repeat:no-repeat;
 }
 html[data-lyrics=true][data-edge=top] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 0 100%,transparent 11.5px,#000 12px)}
 html[data-lyrics=true][data-edge=top] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 100% 100%,transparent 11.5px,#000 12px)}
