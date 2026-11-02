@@ -644,8 +644,10 @@ html[data-edge=right] :is(.notch-surface,.quick-shell,.glass-shell)::after{right
 .desktop .glass-shell{overflow:visible}.desktop .hub-body{min-height:0;overflow:auto}.device-transfer-limit{gap:12px;flex-wrap:wrap}.device-transfer-limit input{width:76px;background:var(--control-surface);color:var(--control-ink);border:1px solid var(--control-border);border-radius:8px;padding:7px}.device-transfer-limit small{flex-basis:100%;line-height:1.5}
 :is(html[data-edge=left],html[data-edge=right])[data-notch=idle] .caps-notice{height:100%;justify-content:center;width:100%}
 
-/* Music comet: fixed silhouette, open free contour, tapered trailing light. */
-.desktop.compact .notch-surface>.bimu-music-edge{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;pointer-events:none;z-index:0;opacity:0;transition:opacity 240ms ease;--comet-head-color:color-mix(in srgb,var(--audio-accent) 55%,var(--audio-base) 45%)}
+/* Music comet: fixed silhouette, open free contour, tapered trailing light.
+   The contour must paint above the ::before/::after shoulder surfaces; their
+   default positioned layer otherwise masks the light as it rounds a corner. */
+.desktop.compact .notch-surface>.bimu-music-edge{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;pointer-events:none;z-index:1;opacity:0;transition:opacity 240ms ease;--comet-head-color:color-mix(in srgb,var(--audio-accent) 55%,var(--audio-base) 45%)}
 .desktop.compact .notch-surface>.bimu-music-edge.is-playing{opacity:var(--ui-opacity,1)}
 .bimu-music-edge .music-comet-glow{opacity:.85}
 @media(prefers-reduced-motion:reduce){.desktop.compact .notch-surface>.bimu-music-edge{transition:none}}
