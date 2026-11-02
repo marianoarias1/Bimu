@@ -190,7 +190,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
       {!(dock.state==='idle'&&(capsNotice!==null||(lyricsOpen&&lyrics.status==='synced'&&currentLyric>=0)))&&<><time className="notch-clock" aria-label={clock.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})}>{dock.lateral?<><span>{clock.getHours().toString().padStart(2,'0')}</span><span className="clock-colon" aria-hidden="true">•</span><span>{clock.getMinutes().toString().padStart(2,'0')}</span></>:clock.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})}</time>{statusIcon}</>}
       <span className="notch-indicator"><span className="status-dot"/></span>
       <span className="notch-grip"><Grip size={12}/></span>
-      <MusicEdge active={!!media?.playing&&dock.state!=='retracted'} edge={dock.edge} native={nativeMode}/>
+      <MusicEdge active={!!media?.playing&&dock.state!=='retracted'} edge={dock.edge}/>
     </button>}
     {!expanded&&!drop.active&&<section className="notch-player" aria-label={{music:'Reproductor de música',shelf:'Bandeja de archivos',modes:'Atajos rápidos',weather:'Clima',clipboard:'Portapapeles'}[notchPage]}>
       <div className="player-heading"><button className="notch-move-button" aria-label="Arrastrar Bimu por el borde seleccionado" title="Arrastrar para mover" {...dock.handlers}><Grip size={15}/></button>{capsNotice!==null?<span className="caps-peek" role="status"><CapsLabel enabled={capsNotice}/></span>:<><span className="player-date">{clock.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric'}).replaceAll('.','')}</span><time>{clock.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})}</time></>}</div>
