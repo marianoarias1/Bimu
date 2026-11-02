@@ -21,7 +21,7 @@ export function ApplicationSettings({apps,onBack,shortcuts=[]}){
  const filtered=useMemo(()=>{const key=appNameKey(query);return(tab==='added'?apps.items:apps.discovered).filter(item=>appNameKey(item.name).includes(key))},[tab,apps.items,apps.discovered,query])
  return <section className="shortcuts-flow glass-card sc-library" aria-label="Aplicaciones para atajos">
   {onBack&&<button className="sc-back" type="button" onClick={onBack}><ChevronLeft size={14}/> Tus atajos</button>}
-  <div className="sc-heading"><h2>Aplicaciones para atajos</h2><PairInfo title="Aplicaciones para atajos"><p>Podés elegir una aplicación directamente al crear un atajo. Esta lista permite administrar las que agregaste a Bimu.</p><p>Quitar una app de esta lista no la desinstala. Si Windows no entrega un icono, usamos el icono genérico.</p></PairInfo></div>
+  <div className="sc-heading"><h2>Aplicaciones para atajos</h2><PairInfo title="Aplicaciones para atajos"><p>Podés elegir una aplicación directamente al crear un atajo. Esta lista permite administrar las que agregaste a Bimu.</p><p>Quitar una app de esta lista no la desinstala.</p></PairInfo></div>
   <div className="sc-type-tabs" aria-label="Listado de aplicaciones"><button type="button" aria-pressed={tab==='available'} onClick={()=>setTab('available')}>Disponibles en tu PC</button><button type="button" aria-pressed={tab==='added'} onClick={()=>setTab('added')}>Agregadas a Bimu</button></div>
   <label className="sc-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar una aplicación" aria-label="Buscar una aplicación"/></label>
   {apps.error&&<p role="alert" className="sc-error">{apps.error}</p>}

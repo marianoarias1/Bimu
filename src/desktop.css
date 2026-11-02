@@ -831,3 +831,29 @@ html[data-theme=light] .desktop .shortcuts-flow{color-scheme:light}
 .desktop .shortcuts-flow .chrome-profile-picker p{font-size:10px}
 @media(max-width:420px){.desktop .settings-view .settings-menu button{font-size:9px}.sc-icon-stack .app-real-icon:not(:first-child){display:none}.sc-shortcut-row{gap:5px;padding:6px}.desktop .shortcuts-flow button.sc-open{min-width:32px;font-size:10px;padding:5px}}
 @media(prefers-reduced-motion:reduce){.sc-shortcut-list>li{transition:none}}
+
+/* The surface and its concave shoulders sample one inward-facing lyric
+   gradient. Masks define only the curve, never a second background color. */
+html[data-lyrics=true] .desktop.compact .notch-surface{
+ --lyrics-direction:to bottom;--lyrics-start:0%;
+ --lyrics-base:rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1));
+ --lyrics-tint:color-mix(in srgb,color-mix(in srgb,rgb(var(--notch-rgb,9,10,13)) 55%,rgb(var(--cover-glow,82,75,65)) 45%) calc(var(--ui-opacity,1) * 100%),transparent);
+ --lyrics-background:linear-gradient(var(--lyrics-direction),var(--lyrics-base) var(--lyrics-start),var(--lyrics-tint) 100%);
+}
+html[data-lyrics=true][data-notch=peek] .desktop.compact .notch-surface{--lyrics-start:35%}
+html[data-lyrics=true][data-edge=bottom] .desktop.compact .notch-surface{--lyrics-direction:to top}
+html[data-lyrics=true][data-edge=left] .desktop.compact .notch-surface{--lyrics-direction:to right}
+html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface{--lyrics-direction:to left}
+html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface,
+html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::before,
+html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::after{
+ background:var(--lyrics-background);background-size:var(--lyrics-width,100%) var(--lyrics-height,100%);background-repeat:no-repeat;box-shadow:none;
+}
+html[data-lyrics=true][data-edge=top] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 0 100%,transparent 11.5px,#000 12px)}
+html[data-lyrics=true][data-edge=top] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 100% 100%,transparent 11.5px,#000 12px)}
+html[data-lyrics=true][data-edge=bottom] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 0 0,transparent 11.5px,#000 12px);background-position:left bottom}
+html[data-lyrics=true][data-edge=bottom] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 100% 0,transparent 11.5px,#000 12px);background-position:right bottom}
+html[data-lyrics=true][data-edge=left] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 100% 0,transparent 11.5px,#000 12px)}
+html[data-lyrics=true][data-edge=left] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 100% 100%,transparent 11.5px,#000 12px)}
+html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface::before{mask-image:radial-gradient(circle at 0 0,transparent 11.5px,#000 12px);background-position:right top}
+html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface::after{mask-image:radial-gradient(circle at 0 100%,transparent 11.5px,#000 12px);background-position:right bottom}
