@@ -38,6 +38,7 @@ fn write_frame(stream: &mut TcpStream, frame: &[u8]) -> Result<(), String> {
 pub fn pair(mut stream: TcpStream, role: Role, code: &str) -> Result<SecureChannel, String> {
     // Windows accepted sockets can inherit nonblocking mode from the listener.
     // Handshake framing uses read_exact, so normalize before applying timeouts.
+    stream.set_nodelay(true).map_err(|e| e.to_string())?;
     stream.set_nonblocking(false).map_err(|e| format!("preparar conexión: {e}"))?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
     stream.set_write_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
@@ -69,6 +70,7 @@ pub fn pair(mut stream: TcpStream, role: Role, code: &str) -> Result<SecureChann
 }
 /// Authenticates a stored random secret before any application data is exchanged.
 pub fn reconnect(mut stream: TcpStream, role: Role, psk: &[u8; 32]) -> Result<SecureChannel, String> {
+    stream.set_nodelay(true).map_err(|e| e.to_string())?;
     stream.set_nonblocking(false).map_err(|e| e.to_string())?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
     stream.set_write_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;

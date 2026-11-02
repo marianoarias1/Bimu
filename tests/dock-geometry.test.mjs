@@ -18,13 +18,13 @@ assert.ok(notchSize('top','peek','M','lyrics')[1]>notchSize('top','peek','M','ho
 assert.ok(notchSize('top','idle','M','lyrics')[0]>notchSize('top','idle','M','home')[0])
 for(const edge of ['left','right']){
  const idle=notchSize(edge,'idle'),peek=notchSize(edge,'peek')
- assert.ok(idle[0]<=80&&idle[1]<=100,'a small side tab at rest')
+ assert.ok(idle[0]<=55&&idle[1]<=170,'a small side tab at rest')
  assert.ok(peek[1]>=idle[1],'hover expands inward without a tall empty column')
  assert.ok(peek[0]-64>=220,'quick chat has enough horizontal reading space')
  const area={x:-1920,y:0,width:1920,height:1040},a=dockPosition(area,...idle,edge,.5),b=dockPosition(area,...peek,edge,.5)
  assert.ok(Math.abs((a.y+idle[1]/2)-(b.y+peek[1]/2))<=1)
  if(edge==='left')assert.equal(a.x,b.x);else assert.equal(a.x+idle[0],b.x+peek[0])
- assert.deepEqual(notchSize(edge,'peek','M','home',true),[179,299],'file reception retains its usable layout')
+ assert.deepEqual(notchSize(edge,'peek','M','home',true),notchSize(edge,'peek','M','home'),'file reception uses the horizontal inward surface')
 }
 console.log('OK: 540 combinaciones de posición, límites de monitor, centro, DPI y magnetismo.')
 
@@ -77,3 +77,10 @@ for (const state of ['peek','open']) for(const tab of ['home','lyrics','quick-se
  assert.deepEqual(notchSize('top',state,'M',tab),notchSize('top',state,'L',tab))
 }
 assert.notDeepEqual(notchSize('top','idle','S'),notchSize('top','idle','L'))
+
+for(const edge of ['top','bottom','left','right'])for(const size of ['S','M','L']){
+ assert.deepEqual(notchSize(edge,'peek',size,'home'),notchSize('top','peek','L','home'))
+ assert.deepEqual(notchSize(edge,'peek',size,'lyrics'),notchSize('top','peek','L','lyrics'))
+ assert.deepEqual(notchSize(edge,'open',size,'settings'),[680,570])
+ assert.deepEqual(notchSize(edge,'open',size,'quick-settings'),[480,360])
+}

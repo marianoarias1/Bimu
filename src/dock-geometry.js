@@ -3,9 +3,11 @@ export const isLateral=edge=>edge==='left'||edge==='right'
 export const clamp=(value,min,max)=>Math.max(min,Math.min(max,value))
 export function notchSize(edge,state,size='M',tab='home',receiving=false) {
   const lateral=isLateral(edge)
-  if(state==='open')return tab==='quick-settings'?(lateral?[380,420]:[480,360]):lateral?[430,tab==='home'?480:650]:[680,tab==='home'?350:570]
+  // Expanded pages retain the approved horizontal layout on every edge.
+  if(state==='open')return tab==='quick-settings'?[480,360]:[680,tab==='home'?350:570]
   const factor=state==='peek'?1.15:state==='idle'||state==='anticipate'?({S:.85,M:1,L:1.15}[size]||1):1
-  const base=state==='retracted'?(lateral?[7,64]:[64,7]):receiving&&lateral?[156,260]:state==='peek'?((tab==='lyrics'||tab==='lyrics-loading')?(lateral?[380,164]:[520,142]):(lateral?[310,96]:[420,132])):state==='anticipate'?(lateral?[80,102]:(tab==='lyrics'?[332,30]:[162,30])):(lateral?[76,96]:(tab==='lyrics'?[320,27]:[150,27]))
+  const lyric=tab==='lyrics'||tab==='lyrics-loading'||tab==='caps'
+  const base=state==='retracted'?(lateral?[7,64]:[64,7]):state==='peek'?(lyric?[520,142]:[420,132]):state==='anticipate'?(lateral?(lyric?[188,110]:[50,150]):(lyric?[332,30]:[162,30])):(lateral?(lyric?[180,104]:[48,144]):(lyric?[320,27]:[150,27]))
   return base.map(n=>Math.round(n*factor))
 }
 // All values here are physical pixels, including negative monitor origins.
@@ -61,7 +63,8 @@ export function desktopEnvelope(area,edge,size,scale,fraction){
   const width=Math.min(Math.round(w*scale),area.width),height=Math.min(Math.round(h*scale),area.height)
   return {...dockPosition(area,width,height,edge,fraction),width,height}
  }
- const frame=[rect('idle'),rect('peek'),rect('open','home'),rect('open','settings')].reduce(unionRects)
+ const frame=[rect('idle'),rect('peek'),rect('open','home'),rect('open','settings'),rect('idle','lyrics'),rect('peek','lyrics')].reduce(unionRects)
  const pad=Math.round(224*scale),x=Math.max(area.x,frame.x-pad),right=Math.min(area.x+area.width,frame.x+frame.width+pad)
- return {...frame,x,width:right-x}
+ const vertical=isLateral(edge)?Math.round(12*scale):0,y=Math.max(area.y,frame.y-vertical),bottom=Math.min(area.y+area.height,frame.y+frame.height+vertical)
+ return {...frame,x,y,width:right-x,height:bottom-y}
 }

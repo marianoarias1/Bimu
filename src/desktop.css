@@ -608,3 +608,38 @@ html:not([data-lyrics=true]) .desktop.compact .notch-player .player-controls .pl
 .player-wave.is-playing i::before{animation:bimu-wave 1.2s linear infinite}
 @keyframes bimu-wave{to{mask-position:24px center}}
 @media(prefers-reduced-motion:reduce){.player-action-icon,.desktop.compact .notch-player .player-controls .player-action{transition:none}.player-icon-previous,.player-icon-next,.player-wave.is-playing i::before{animation:none}.player-controls .player-action:hover .player-action-icon{transform:none}.desktop.compact .notch-player .player-progress.player-wave i{transition:none}}
+
+/* Four-edge Bimu: all expanded views keep the same horizontal reading flow. */
+:is(html[data-edge=left],html[data-edge=right]) .notch-player{padding:8px 36px 7px 48px}
+:is(html[data-edge=left],html[data-edge=right])[data-notch=peek] .desktop.compact .notch-surface{flex-direction:row;align-items:flex-start;padding:14px 14px 0;gap:8px;text-align:left}
+html[data-edge=left] .desktop.compact .notch-surface{border-radius:0 15px 15px 0}
+html[data-edge=right] .desktop.compact .notch-surface{border-radius:15px 0 0 15px}
+html[data-edge=left][data-notch=peek] .desktop.compact .notch-surface{border-radius:0 29px 29px 0}
+html[data-edge=right][data-notch=peek] .desktop.compact .notch-surface{border-radius:29px 0 0 29px}
+:is(html[data-edge=left],html[data-edge=right])[data-notch=peek] .desktop.compact .notch-avatar-slot{align-self:auto;margin:0;width:25px;min-width:25px;height:auto}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-surface{flex-direction:column;justify-content:space-between;align-items:center;padding:15px 6px;gap:8px;text-align:center}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-face{flex-direction:column;gap:8px;min-height:20px}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-avatar-slot{align-self:auto;margin:0;height:14px;width:25px;min-width:25px}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-clock{display:flex;position:static;transform:none;flex-direction:column;align-items:center;gap:0;font-size:15px;line-height:1.05}
+.clock-colon{font-size:10px;line-height:.8;font-weight:900;opacity:.85}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-surface>.system-status{position:relative;inset:auto;flex:none}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .audio-equalizer{position:static;transform:none;height:10px;gap:3px}
+:is(html[data-edge=left],html[data-edge=right]):is([data-notch=idle],[data-notch=anticipate]) .audio-equalizer b{max-height:10px}
+:is(html[data-edge=left],html[data-edge=right])[data-lyrics=true][data-notch=idle] .compact-lyric-inline{flex-direction:column;justify-content:center;gap:6px;height:100%;font-size:12px;line-height:1.35;text-align:center}
+:is(html[data-edge=left],html[data-edge=right])[data-lyrics=true][data-notch=idle] .compact-lyric-inline>span{white-space:normal;overflow-wrap:anywhere;overflow:auto;max-height:100%;text-overflow:clip;scrollbar-width:thin}
+:is(html[data-edge=left],html[data-edge=right])[data-notch=idle] .caps-notice{position:static;display:flex;flex-direction:column;align-items:center;white-space:normal;font-size:9px;gap:5px}
+:is(html[data-edge=left],html[data-edge=right]) .desktop .hub-header{position:relative;inset:auto;flex-direction:row;width:100%;height:44px;min-height:44px;padding:0 15px;border:0}
+:is(html[data-edge=left],html[data-edge=right]) .desktop .hub-body{margin:0;padding:15px 23px 10px;min-height:0;overflow:auto}
+:is(html[data-edge=left],html[data-edge=right]) .desktop .hub-footer{margin:0}
+/* Inward concave shoulders, using the same color and alpha as the surface. */
+:is(html[data-edge=bottom],html[data-edge=left],html[data-edge=right]) :is(.notch-surface,.quick-shell,.glass-shell)::before,
+:is(html[data-edge=bottom],html[data-edge=left],html[data-edge=right]) :is(.notch-surface,.quick-shell,.glass-shell)::after{content:'';position:absolute;width:12px;height:12px;pointer-events:none;box-shadow:none;border-radius:0}
+html[data-edge=bottom] :is(.notch-surface,.quick-shell,.glass-shell)::before{left:-12px;bottom:0;top:auto;background:radial-gradient(circle at 0 0,transparent 11.5px,rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1)) 12px)}
+html[data-edge=bottom] :is(.notch-surface,.quick-shell,.glass-shell)::after{right:-12px;bottom:0;top:auto;background:radial-gradient(circle at 100% 0,transparent 11.5px,rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1)) 12px)}
+html[data-edge=left] :is(.notch-surface,.quick-shell,.glass-shell)::before{left:0;top:-12px;background:radial-gradient(circle at 100% 0,transparent 11.5px,rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1)) 12px)}
+html[data-edge=left] :is(.notch-surface,.quick-shell,.glass-shell)::after{left:0;bottom:-12px;background:radial-gradient(circle at 100% 100%,transparent 11.5px,rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1)) 12px)}
+html[data-edge=right] :is(.notch-surface,.quick-shell,.glass-shell)::before{right:0;top:-12px;background:radial-gradient(circle at 0 0,transparent 11.5px,rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1)) 12px)}
+html[data-edge=right] :is(.notch-surface,.quick-shell,.glass-shell)::after{right:0;bottom:-12px;background:radial-gradient(circle at 0 100%,transparent 11.5px,rgba(var(--notch-rgb,9,10,13),var(--ui-opacity,1)) 12px)}
+/* Smaller monitors retain scrolling in settings, not clipped controls. */
+.desktop .glass-shell{overflow:visible}.desktop .hub-body{min-height:0;overflow:auto}.device-transfer-limit{gap:12px;flex-wrap:wrap}.device-transfer-limit input{width:76px;background:var(--control-surface);color:var(--control-ink);border:1px solid var(--control-border);border-radius:8px;padding:7px}.device-transfer-limit small{flex-basis:100%;line-height:1.5}
+:is(html[data-edge=left],html[data-edge=right])[data-notch=idle] .caps-notice{height:100%;justify-content:center;width:100%}

@@ -7,20 +7,21 @@ use crate::clipboard_files::FileBundle;
 use crate::shelf_shared::ShelfMetadata;
 const MAX_TEXT: usize = 1024*1024;
 const MAX_IMAGE: usize = 12*1024*1024;
-const MAX_WIRE: usize = 17*1024*1024;
+const MAX_WIRE: usize = 135*1024*1024;
 const CHUNK: usize = 32*1024;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ClipboardPayload { Text(String), Image { width:usize, height:usize, rgba:Vec<u8> }, Files(Vec<PathBuf>), FileBundle(FileBundle), ShelfCatalog(Vec<ShelfMetadata>), ShelfRequest{id:String,token:u64}, ShelfReply{id:String,token:u64,bundle:Option<FileBundle>,error:Option<String>} }
+pub enum ClipboardPayload { Limits(usize), Text(String), Image { width:usize, height:usize, rgba:Vec<u8> }, Files(Vec<PathBuf>), FileBundle(FileBundle), ShelfCatalog(Vec<ShelfMetadata>), ShelfRequest{id:String,token:u64}, ShelfReply{id:String,token:u64,bundle:Option<FileBundle>,error:Option<String>} }
 #[derive(Serialize,Deserialize)]
 #[serde(tag="kind", rename_all="snake_case", deny_unknown_fields)]
-enum WirePayload { Text { text:String }, Image { width:usize, height:usize, rgba:String }, Files { bundle:FileBundle }, ShelfCatalog { items:Vec<ShelfMetadata> }, ShelfRequest { id:String, token:u64 }, ShelfReply { id:String, token:u64, bundle:Option<FileBundle>, error:Option<String> } }
+enum WirePayload { Limits { mb:usize }, Text { text:String }, Image { width:usize, height:usize, rgba:String }, Files { bundle:FileBundle }, ShelfCatalog { items:Vec<ShelfMetadata> }, ShelfRequest { id:String, token:u64 }, ShelfReply { id:String, token:u64, bundle:Option<FileBundle>, error:Option<String> } }
 fn image_size(width:usize,height:usize)->Option<usize>{
  if width==0||height==0||width>16384||height>16384{return None}
  width.checked_mul(height)?.checked_mul(4).filter(|n|*n<=MAX_IMAGE)
 }
 fn encode(payload:ClipboardPayload)->Result<Vec<u8>,String>{
  let wire=match payload{
+  ClipboardPayload::Limits(mb)=>{crate::transfer_limits::validate(mb)?;WirePayload::Limits{mb}},
   ClipboardPayload::Text(text) if !text.is_empty()&&text.len()<=MAX_TEXT=>WirePayload::Text{text},
   ClipboardPayload::Image{width,height,rgba} if image_size(width,height)==Some(rgba.len())=>WirePayload::Image{width,height,rgba:STANDARD.encode(rgba)},
   ClipboardPayload::FileBundle(bundle)=>WirePayload::Files{bundle},
@@ -35,6 +36,7 @@ fn encode(payload:ClipboardPayload)->Result<Vec<u8>,String>{
 fn decode(data:&[u8])->Result<ClipboardPayload,String>{
  let wire:WirePayload=serde_json::from_slice(data).map_err(|_|"Formato del portapapeles inválido")?;
  match wire{
+  WirePayload::Limits{mb}=>{crate::transfer_limits::validate(mb)?;Ok(ClipboardPayload::Limits(mb))},
   WirePayload::Text{text} if !text.is_empty()&&text.len()<=MAX_TEXT=>Ok(ClipboardPayload::Text(text)),
   WirePayload::Files{bundle}=>Ok(ClipboardPayload::FileBundle(bundle)),
   WirePayload::ShelfCatalog{items}=>{crate::shelf_shared::validate(&items)?;Ok(ClipboardPayload::ShelfCatalog(items))},
@@ -60,12 +62,13 @@ pub fn send_turn(channel:&mut SecureChannel,payload:Option<ClipboardPayload>)->R
   }
  }
 }
-pub fn receive_turn(channel:&mut SecureChannel)->Result<Option<ClipboardPayload>,String>{
+pub fn receive_turn(channel:&mut SecureChannel)->Result<Option<ClipboardPayload>,String>{receive_turn_with_limit(channel,crate::transfer_limits::local_bytes())}
+pub fn receive_turn_with_limit(channel:&mut SecureChannel,file_limit:usize)->Result<Option<ClipboardPayload>,String>{
  let header=channel.receive()?;
  if header==[0]{return Ok(None)}
  if header.len()!=5||header[0]!=1{return Err("Cabecera de sincronización inválida".into())}
  let size=u32::from_be_bytes(header[1..5].try_into().map_err(|_|"Cabecera inválida")?) as usize;
- if size==0||size>MAX_WIRE{return Err("Tamaño de sincronización inválido".into())}
+ if size==0||size>MAX_WIRE.min(crate::transfer_limits::wire_bytes(file_limit).max(17*1024*1024)){return Err("Tamaño de sincronización inválido".into())}
  let mut data=Vec::with_capacity(size);
  while data.len()<size{let chunk=channel.receive()?;if chunk.is_empty()||chunk.len()>CHUNK||chunk.len()>size-data.len(){return Err("Fragmento de sincronización inválido".into())}data.extend_from_slice(&chunk)}
  decode(&data).map(Some)
@@ -111,5 +114,30 @@ pub fn receive_turn(channel:&mut SecureChannel)->Result<Option<ClipboardPayload>
   assert!(encode(ClipboardPayload::Text("x".repeat(MAX_TEXT+1))).is_err());
   assert!(encode(ClipboardPayload::Image{width:2,height:2,rgba:vec![1,2]}).is_err());
   assert!(decode(br#"{"kind":"image","width":999999,"height":3,"rgba":""}"#).is_err());
+ }
+}
+
+#[cfg(test)]mod limit_tests{
+ use super::*;
+ use crate::{pairing_core::Role,pairing_transport::pair};
+ use std::{net::{TcpListener,TcpStream},thread};
+ #[test]fn limit_changes_cross_authenticated_channel(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();
+  let receiver=thread::spawn(move||{let(s,_)=listener.accept().unwrap();let mut c=pair(s,Role::Host,"123456").unwrap();assert_eq!(receive_turn(&mut c).unwrap(),Some(ClipboardPayload::Limits(30)));});
+  let mut c=pair(TcpStream::connect(addr).unwrap(),Role::Client,"123456").unwrap();send_turn(&mut c,Some(ClipboardPayload::Limits(30))).unwrap();receiver.join().unwrap();
+  assert!(encode(ClipboardPayload::Limits(101)).is_err());assert!(decode(br#"{"kind":"limits","mb":0}"#).is_err());
+ }
+ #[test]fn oversized_announcement_is_rejected_before_payload_allocation(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();
+  let receiver=thread::spawn(move||{let(s,_)=listener.accept().unwrap();let mut c=pair(s,Role::Host,"123456").unwrap();assert!(receive_turn_with_limit(&mut c,crate::transfer_limits::MIB).is_err());});
+  let mut c=pair(TcpStream::connect(addr).unwrap(),Role::Client,"123456").unwrap();let mut header=[1u8;5];header[1..].copy_from_slice(&(18u32*1024*1024).to_be_bytes());c.send(&header).unwrap();receiver.join().unwrap();
+ }
+ #[test]fn thirty_megabyte_selection_crosses_the_authenticated_channel(){
+  use std::{fs,time::{SystemTime,UNIX_EPOCH}};
+  let dir=std::env::temp_dir().join(format!("bimu-30mb-{}",SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir(&dir).unwrap();let path=dir.join("large.bin");let f=fs::File::create(&path).unwrap();f.set_len(30*1024*1024).unwrap();drop(f);
+  let bundle=crate::clipboard_files::pack_with_limit(&[path],30*1024*1024,&||false).unwrap();
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();let dest=dir.join("received");
+  let receiver=thread::spawn(move||{let(s,_)=listener.accept().unwrap();let mut c=pair(s,Role::Host,"123456").unwrap();let Some(ClipboardPayload::FileBundle(b))=receive_turn_with_limit(&mut c,30*1024*1024).unwrap()else{panic!("expected files")};crate::clipboard_files::unpack_with_limit(&b,&dest,30*1024*1024).unwrap();assert_eq!(fs::metadata(dest.join("large.bin")).unwrap().len(),30*1024*1024);});
+  let mut c=pair(TcpStream::connect(addr).unwrap(),Role::Client,"123456").unwrap();send_turn(&mut c,Some(ClipboardPayload::FileBundle(bundle))).unwrap();receiver.join().unwrap();fs::remove_dir_all(dir).unwrap();
  }
 }
