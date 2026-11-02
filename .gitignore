@@ -13,3 +13,5 @@ native-tests/target/
 *.key
 *.p12
 *.pfx
+
+/test-results/

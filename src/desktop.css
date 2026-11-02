@@ -860,9 +860,9 @@ html[data-lyrics=true][data-edge=right] .desktop.compact .notch-surface::after{m
 
 /* Fill the animated body itself, never a delayed pixel snapshot. Background
    shorthand transitions also interpolate background-size and expose the desktop. */
-html[data-lyrics=true] .desktop.compact .notch-surface{background-size:100% 100%;transition:background-color .2s,border-color .2s}
-html[data-lyrics=true] .desktop.compact .notch-surface::before,
-html[data-lyrics=true] .desktop.compact .notch-surface::after{background-size:var(--lyrics-width,100%) var(--lyrics-height,100%)}
+html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface{background-size:100% 100%;transition:background-color .2s,border-color .2s}
+html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::before,
+html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=anticipate]) .desktop.compact .notch-surface::after{background-size:var(--lyrics-width,100%) var(--lyrics-height,100%)}
 /* A fixed target-sized content frame is revealed by the animated viewport.
    Text never reflows through compact/intermediate widths; no reveal timer. */
 .desktop.compact .notch-player{padding:0;overflow:hidden;transition:opacity 100ms linear;transition-delay:0ms}
