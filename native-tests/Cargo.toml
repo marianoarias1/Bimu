@@ -13,7 +13,7 @@ spake2="0.4"
 snow="0.10"
 hmac="0.12"
 sha2="0.10"
-base64="0.22"
+base64="0.23"
 
 [target.'cfg(windows)'.dependencies]
 winreg="0.55"
