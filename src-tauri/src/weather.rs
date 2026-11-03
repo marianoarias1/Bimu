@@ -3,14 +3,12 @@ use serde_json::Value;
 use std::time::Duration;
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder().timeout(Duration::from_secs(12)).user_agent("Bimu/0.34.0 (https://github.com/marianoarias1/Bimu)").build().map_err(|_| "No se pudo iniciar la consulta del clima.".into())
+    reqwest::Client::builder().https_only(true).connect_timeout(Duration::from_secs(4)).timeout(Duration::from_secs(12)).user_agent("Bimu/0.34.0 (https://github.com/marianoarias1/Bimu)").build().map_err(|_| "No se pudo iniciar la consulta del clima.".into())
 }
 async fn get(url: &str, params: &[(&str, String)]) -> Result<Value, String> {
     let response = client()?.get(url).query(params).send().await.map_err(|_| "No se pudo conectar. Revisá tu conexión e intentá de nuevo.")?;
     if !response.status().is_success() { return Err("El servicio del clima no está disponible en este momento.".into()); }
-    let bytes = response.bytes().await.map_err(|_| "No se pudo leer la respuesta del servicio.")?;
-    if bytes.len() > 1_000_000 { return Err("La respuesta del servicio es demasiado grande.".into()); }
-    serde_json::from_slice(&bytes).map_err(|_| "El servicio devolvió una respuesta inválida.".into())
+    crate::http_response::json_limited(response,1_000_000).await
 }
 #[derive(Deserialize)]
 struct IpLocation { city: Option<String>, region: Option<String>, country_name: Option<String>, latitude: Option<f64>, longitude: Option<f64> }

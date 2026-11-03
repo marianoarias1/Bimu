@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod bounded_io;
+mod http_response;
 mod application_icons;
 mod application_icon_pixels;
 mod startup;

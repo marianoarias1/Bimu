@@ -1,4 +1,4 @@
-//! Explicit, session-only pairing. No clipboard or file access is granted here.
+//! Explicit PAKE pairing, persistent authenticated reconnection and bounded LAN synchronization.
 use crate::pairing_core::Role;
 use crate::pairing_transport::{self, SecureChannel};
 use crate::clipboard_protocol::{self, ClipboardPayload};

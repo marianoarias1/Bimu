@@ -17,8 +17,8 @@ struct FileEntry{path:String,folder:bool,data:String}
 fn safe_name(name:&str)->bool{
  if name.is_empty()||name=="."||name==".."||name.len()>255||name.ends_with('.')||name.ends_with(' ')||name.chars().any(|c|c.is_control()||matches!(c,'/'|'\\'|':'|'*'|'?'|'"'|'<'|'>'|'|')){return false}
  let stem=name.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
- if ["CON","PRN","AUX","NUL"].contains(&stem.as_str()){return false}
- if stem.len()==4&&(stem.starts_with("COM")||stem.starts_with("LPT"))&&matches!(stem.as_bytes()[3],b'1'..=b'9'){return false}
+ if ["CON","PRN","AUX","NUL","CONIN$","CONOUT$"].contains(&stem.as_str()){return false}
+ if stem.strip_prefix("COM").or_else(||stem.strip_prefix("LPT")).is_some_and(|n|matches!(n,"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"¹"|"²"|"³")){return false}
  true
 }
 fn parts(path:&str)->Result<Vec<&str>,String>{
@@ -129,5 +129,17 @@ pub fn unpack_with_limit(bundle:&FileBundle,destination:&Path,limit:usize)->Resu
   let dir=std::env::temp_dir().join(format!("bimu-large-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir(&dir).unwrap();let path=dir.join("large.bin");let f=File::create(&path).unwrap();f.set_len(11*1024*1024).unwrap();drop(f);
   assert!(pack_with_limit(&[path.clone()],10*1024*1024,&||false).is_err());
   let bundle=pack_with_limit(&[path],30*1024*1024,&||false).unwrap();unpack_with_limit(&bundle,&dir.join("received"),30*1024*1024).unwrap();assert_eq!(fs::metadata(dir.join("received/large.bin")).unwrap().len(),11*1024*1024);fs::remove_dir_all(dir).unwrap();
+ }
+}
+
+#[cfg(test)]mod device_alias_tests{
+ use super::*;
+ #[test]fn rejects_device_aliases_before_creating_a_destination(){
+  let root=std::env::temp_dir().join(format!("bimu-device-alias-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir(&root).unwrap();
+  for name in ["COM¹.txt","com²","LPT³.pdf","CONIN$","conout$","NUL.txt","LPT9"]{
+   let b=FileBundle{roots:vec![name.into()],entries:vec![FileEntry{path:name.into(),folder:false,data:String::new()}]};
+   let target=root.join("rejected");assert!(unpack(&b,&target).is_err(),"{name}");assert!(!target.exists());
+  }
+  assert!(safe_name("informe-ñ.pdf"));assert!(safe_name("COM10.txt"));fs::remove_dir_all(root).unwrap();
  }
 }
