@@ -48,7 +48,7 @@ jobs:
           $tags = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name'
           if ($LASTEXITCODE -ne 0) { throw 'Could not check existing releases.' }
           if ($tags -contains "v$version") { throw "Version v$version is already published. Increment the version before merging." }
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
