@@ -57,6 +57,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Get-Item src-tauri/target/release/Bimu.exe -ErrorAction Stop
+          if ($exe.VersionInfo.CompanyName -cne 'Bimu') { throw "Unexpected executable publisher: $($exe.VersionInfo.CompanyName)" }
           if ($exe.VersionInfo.FileDescription -notmatch 'Bimu') { throw "Unexpected executable description: $($exe.VersionInfo.FileDescription)" }
       - name: Stage installer
         shell: pwsh
