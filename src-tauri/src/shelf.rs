@@ -9,8 +9,8 @@ use crate::shelf_shared::ShelfMetadata;
 #[derive(Clone, Deserialize, Serialize)]struct StoredItem { id: String, path: PathBuf }
 #[derive(Serialize)]pub struct ShelfItem { pub id:String, pub name:String, pub path:String, pub kind:String, pub available:bool, pub remote:bool, pub online:bool, pub origin:Option<String>, pub busy:bool }
 fn location(app:&AppHandle)->Result<PathBuf,String>{let dir=app.path().app_data_dir().map_err(|e|e.to_string())?;fs::create_dir_all(&dir).map_err(|e|e.to_string())?;Ok(dir.join("shelf.json"))}
-fn read(app:&AppHandle)->Result<Vec<StoredItem>,String>{match fs::read(location(app)?){Ok(data)=>serde_json::from_slice(&data).map_err(|_|"No se pudo leer la bandeja guardada.".into()),Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(vec![]),Err(e)=>Err(e.to_string())}}
-fn write(app:&AppHandle,entries:&[StoredItem])->Result<(),String>{fs::write(location(app)?,serde_json::to_vec(entries).map_err(|e|e.to_string())?).map_err(|e|e.to_string())}
+fn read(app:&AppHandle)->Result<Vec<StoredItem>,String>{match crate::bounded_io::read_limited(&location(app)?,1024*1024){Ok(data)=>serde_json::from_slice(&data).map_err(|_|"No se pudo leer la bandeja guardada.".into()),Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(vec![]),Err(e)=>Err(e.to_string())}}
+fn write(app:&AppHandle,entries:&[StoredItem])->Result<(),String>{crate::config_migration::write_atomic(&location(app)?,&serde_json::to_vec(entries).map_err(|e|e.to_string())?)}
 fn view(items:Vec<StoredItem>)->Vec<ShelfItem>{items.into_iter().map(|item|{let meta=fs::metadata(&item.path);ShelfItem{id:item.id,name:item.path.file_name().unwrap_or(item.path.as_os_str()).to_string_lossy().into_owned(),path:item.path.to_string_lossy().into_owned(),kind:if meta.as_ref().map(|m|m.is_dir()).unwrap_or(false){"folder"}else{"file"}.into(),available:meta.is_ok(),remote:false,online:true,origin:None,busy:false}}).collect()}
 fn combined(app:&AppHandle)->Result<Vec<ShelfItem>,String>{
  let local={let state=app.state::<Shelf>();let _guard=state.0.lock().map_err(|_|"Bandeja ocupada")?;view(read(app)?)};

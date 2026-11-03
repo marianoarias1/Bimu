@@ -11,12 +11,19 @@ on:
       - '.github/workflows/windows-release.yml'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: windows-release
   cancel-in-progress: true
 jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
   build:
+    needs: security
+    permissions:
+      contents: write
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -26,7 +33,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-on-failure: true
@@ -48,6 +57,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Get-Item src-tauri/target/release/Bimu.exe -ErrorAction Stop
+          if ($exe.VersionInfo.CompanyName -cne 'Bimu') { throw "Unexpected executable publisher: $($exe.VersionInfo.CompanyName)" }
           if ($exe.VersionInfo.FileDescription -notmatch 'Bimu') { throw "Unexpected executable description: $($exe.VersionInfo.FileDescription)" }
       - name: Stage installer
         shell: pwsh

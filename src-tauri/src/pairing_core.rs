@@ -1,4 +1,4 @@
-//! Experimental pairing primitive. This module does not open sockets or synchronize data.
+//! PAKE pairing primitive. This module does not open sockets or synchronize data.
 //! A caller must enforce expiry, attempt limits, consent, and channel binding.
 use hmac::{Hmac, Mac};
 use sha2::Sha256;

@@ -1,0 +1,83 @@
+name: Security baseline
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 12 * * 1'
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  policy-and-npm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: node scripts/security-policy.mjs
+      - run: node --test tests/rust-audit-policy.test.mjs
+      - run: npm ci --ignore-scripts
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high --json > npm-audit.json
+      - name: Inventory npm dependencies
+        if: always()
+        run: npm sbom --sbom-format cyclonedx > npm-sbom.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: Bimu-security-npm
+          path: |
+            npm-audit.json
+            npm-sbom.json
+  rust-advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Install pinned RustSec auditor
+        run: cargo install cargo-audit --locked --version 0.22.2
+      - name: Record target dependency graphs
+        run: |
+          cargo tree --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --edges normal,build > rust-tree-windows.txt
+          cargo tree --locked --manifest-path src-tauri/Cargo.toml --target x86_64-unknown-linux-gnu --edges normal,build > rust-tree-linux.txt
+          cargo metadata --locked --manifest-path src-tauri/Cargo.toml --filter-platform x86_64-pc-windows-msvc --format-version 1 > rust-metadata-windows.json
+          git diff --exit-code -- src-tauri/Cargo.lock native-tests/Cargo.lock
+      - name: Audit both Rust dependency locks
+        shell: bash
+        run: |
+          app_status=0
+          tests_status=0
+          cargo audit --file src-tauri/Cargo.lock --deny unsound --deny yanked --json > rust-audit-app.json || app_status=$?
+          cargo audit --file native-tests/Cargo.lock --deny unsound --deny yanked --json > rust-audit-tests.json || tests_status=$?
+          # Reports must exist and parse; the policy checks findings and the
+          # single reviewed target exclusion, not merely the scanner exit code.
+          RUST_AUDIT_APP_EXIT="$app_status" RUST_AUDIT_TESTS_EXIT="$tests_status" node scripts/rust-audit-policy.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: Bimu-security-rust
+          path: |
+            rust-audit-*.json
+            rust-tree-*.txt
+            rust-metadata-windows.json
+            src-tauri/Cargo.lock
+            native-tests/Cargo.lock

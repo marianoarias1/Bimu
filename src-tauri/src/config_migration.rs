@@ -87,9 +87,19 @@ fn write_atomic_locked(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .parent()
         .ok_or("La ruta de configuración es inválida.")?;
     fs::create_dir_all(parent).map_err(|_| "No se pudo crear la carpeta de configuración.")?;
-    let temp = path.with_extension("tmp");
-    fs::write(&temp, bytes).map_err(|_| "No se pudo escribir la configuración temporal.")?;
-    fs::rename(&temp, path).map_err(|_| "No se pudo actualizar la configuración.".to_string())
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64,Ordering};
+    static NEXT:AtomicU64=AtomicU64::new(0);
+    let name=path.file_name().ok_or("Ruta de configuración inválida.")?.to_string_lossy();
+    let stamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"Reloj inválido.")?.as_nanos();
+    let temp=parent.join(format!(".{name}.{}.{stamp}.{}.tmp",std::process::id(),NEXT.fetch_add(1,Ordering::Relaxed)));
+    let mut file=fs::OpenOptions::new().write(true).create_new(true).open(&temp).map_err(|_|"No se pudo crear la configuración temporal.")?;
+    let result=(||{
+        file.write_all(bytes).and_then(|_|file.sync_all()).map_err(|_|"No se pudo escribir la configuración temporal.")?;
+        drop(file);
+        fs::rename(&temp,path).map_err(|_|"No se pudo actualizar la configuración.")
+    })();
+    if result.is_err(){let _=fs::remove_file(&temp);}result.map_err(str::to_owned)
 }
 
 /// Creates a recoverable copy and upgrades a legacy file only after it decoded successfully.
@@ -108,7 +118,7 @@ pub fn migrate_file<T: DeserializeOwned + Serialize>(
     if metadata.len() > max_bytes {
         return Err("La configuración guardada es demasiado grande.".into());
     }
-    let bytes = fs::read(path).map_err(|_| "No se pudo leer la configuración.")?;
+    let bytes = crate::bounded_io::read_limited(path,max_bytes.try_into().map_err(|_|"Límite de configuración inválido.")?).map_err(|_| "No se pudo leer la configuración o supera su límite.")?;
     let decoded = decode_items(&bytes, key)?;
     if decoded.needs_migration {
         fs::write(backup_path(path)?, &bytes)
@@ -166,4 +176,15 @@ mod tests {
         );
         fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[cfg(test)]mod atomic_hardening_tests{
+ use super::*;
+ #[test]fn ignores_preexisting_predictable_temp_and_preserves_valid_data_on_oversize(){
+  let root=std::env::temp_dir().join(format!("bimu-atomic-{}-{}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir(&root).unwrap();
+  let path=root.join("items.json");let decoy=path.with_extension("tmp");fs::write(&decoy,b"do not truncate").unwrap();
+  write_atomic(&path,br#"["ok"]"#).unwrap();write_atomic(&path,br#"["new"]"#).unwrap();assert_eq!(fs::read(&decoy).unwrap(),b"do not truncate");
+  assert!(migrate_file::<String>(&path,2,"items").is_err());assert_eq!(fs::read(&path).unwrap(),br#"["new"]"#);
+  assert_eq!(fs::read_dir(&root).unwrap().count(),2);fs::remove_dir_all(root).unwrap();
+ }
 }

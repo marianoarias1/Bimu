@@ -52,7 +52,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
@@ -73,6 +75,11 @@ jobs:
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - run: npm run build
       - run: npm run desktop:build -- --bundles nsis
+      - name: Verify Windows executable publisher
+        shell: pwsh
+        run: |
+          $exe = Get-Item src-tauri/target/release/Bimu.exe -ErrorAction Stop
+          if ($exe.VersionInfo.CompanyName -cne 'Bimu') { throw "Unexpected executable publisher: $($exe.VersionInfo.CompanyName)" }
       - run: git diff --exit-code -- src-tauri/Cargo.lock native-tests/Cargo.lock
       - name: Preserve verification installer
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

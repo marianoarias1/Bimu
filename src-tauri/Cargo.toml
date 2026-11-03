@@ -1,12 +1,13 @@
 [package]
 name = "mascota-companero"
-version = "0.55.9"
+version = "0.55.11"
 description = "Bimu"
-authors = ["Mariano"]
+authors = ["Mariano Arias"]
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = "1"
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }

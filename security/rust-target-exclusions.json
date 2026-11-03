@@ -1,0 +1,12 @@
+[
+  {
+    "lockfile": "src-tauri/Cargo.lock",
+    "id": "RUSTSEC-2024-0429",
+    "package": "glib",
+    "version": "0.18.5",
+    "target": "x86_64-pc-windows-msvc",
+    "until": "2026-12-03T00:00:00Z",
+    "owner": "Mariano Arias (repository maintainer)",
+    "reason": "Bimu ships Windows x64. Cargo's filtered resolution excludes glib; the Linux tree reaches it through Tauri GTK/WebKit. Full-lock JSON remains visible. This scope exclusion is invalid if glib 0.18.5 enters the Windows graph; Linux distribution remains blocked pending an upstream fix."
+  }
+]

@@ -1,9 +1,9 @@
-//! Experimental loopback-tested transport, not wired to the application.
-//! Not a complete pairing protocol: rate limits, expiry, consent and persistent
-//! identity are mandatory before allowing access from another computer.
+//! Authenticated LAN transport. Pairing policy/consent live in device_pairing.
+//! Handshakes have an absolute deadline; established transfers keep their
+//! existing inactivity/large-payload timeouts.
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::time::Duration;
+use std::time::{Duration,Instant};
 use sha2::{Digest, Sha256};
 use crate::pairing_core::{self, Role};
 
@@ -20,6 +20,29 @@ fn read_error(stage: &str, error: std::io::Error) -> String {
     };
     format!("{stage}: {detail}")
 }
+const HANDSHAKE_TIMEOUT:Duration=Duration::from_secs(10);
+fn remaining(deadline:Instant)->std::io::Result<Duration>{deadline.checked_duration_since(Instant::now()).filter(|d|!d.is_zero()).map(|d|d.min(Duration::from_secs(5))).ok_or_else(||std::io::Error::new(std::io::ErrorKind::TimedOut,"handshake deadline"))}
+fn read_until(stream:&mut TcpStream,mut bytes:&mut[u8],deadline:Instant)->std::io::Result<()>{
+ while !bytes.is_empty(){
+  stream.set_read_timeout(Some(remaining(deadline)?))?;
+  match stream.read(bytes){Ok(0)=>return Err(std::io::ErrorKind::UnexpectedEof.into()),Ok(n)=>bytes=&mut bytes[n..],Err(e)if e.kind()==std::io::ErrorKind::Interrupted=>continue,Err(e)=>return Err(e)}
+ }remaining(deadline)?;Ok(())
+}
+fn write_until(stream:&mut TcpStream,mut bytes:&[u8],deadline:Instant)->std::io::Result<()>{
+ while !bytes.is_empty(){
+  stream.set_write_timeout(Some(remaining(deadline)?))?;
+  match stream.write(bytes){Ok(0)=>return Err(std::io::ErrorKind::WriteZero.into()),Ok(n)=>bytes=&bytes[n..],Err(e)if e.kind()==std::io::ErrorKind::Interrupted=>continue,Err(e)=>return Err(e)}
+ }remaining(deadline)?;Ok(())
+}
+fn handshake_read(stream:&mut TcpStream,deadline:Instant)->Result<Vec<u8>,String>{
+ let mut header=[0u8;2];read_until(stream,&mut header,deadline).map_err(|e|read_error("cabecera",e))?;
+ let len=u16::from_be_bytes(header)as usize;if len==0||len>MAX_HANDSHAKE{return Err("tamaño de mensaje inválido".into())}
+ let mut frame=vec![0;len];read_until(stream,&mut frame,deadline).map_err(|e|read_error("contenido",e))?;Ok(frame)
+}
+fn handshake_write(stream:&mut TcpStream,bytes:&[u8],deadline:Instant)->Result<(),String>{
+ if bytes.is_empty()||bytes.len()>MAX_HANDSHAKE{return Err("invalid handshake frame".into())}
+ write_until(stream,&(bytes.len()as u16).to_be_bytes(),deadline).and_then(|_|write_until(stream,bytes,deadline)).map_err(|e|read_error("envío",e))
+}
 fn read_frame(stream: &mut TcpStream, limit: usize) -> Result<Vec<u8>, String> {
     let mut header = [0u8; 2];
     stream.read_exact(&mut header).map_err(|e| read_error("cabecera", e))?;
@@ -34,8 +57,9 @@ fn write_frame(stream: &mut TcpStream, frame: &[u8]) -> Result<(), String> {
     stream.write_all(&(frame.len() as u16).to_be_bytes()).map_err(|e| e.to_string())?;
     stream.write_all(frame).map_err(|e| e.to_string())
 }
-/// Blocks on I/O and is for an isolated test only, never the UI thread.
+/// Runs on the connection worker, never the UI thread.
 pub fn pair(mut stream: TcpStream, role: Role, code: &str) -> Result<SecureChannel, String> {
+    let deadline=Instant::now()+HANDSHAKE_TIMEOUT;
     // Windows accepted sockets can inherit nonblocking mode from the listener.
     // Handshake framing uses read_exact, so normalize before applying timeouts.
     stream.set_nodelay(true).map_err(|e| e.to_string())?;
@@ -44,20 +68,20 @@ pub fn pair(mut stream: TcpStream, role: Role, code: &str) -> Result<SecureChann
     stream.set_write_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
     let (pending, message) = pairing_core::start(role, code).map_err(str::to_owned)?;
     let peer_message = (match role {
-        Role::Client => { write_frame(&mut stream, &message)?; read_frame(&mut stream, MAX_HANDSHAKE) }
-        Role::Host => { let peer = read_frame(&mut stream, MAX_HANDSHAKE)?; write_frame(&mut stream, &message)?; Ok(peer) }
+        Role::Client => { handshake_write(&mut stream, &message,deadline)?; handshake_read(&mut stream, deadline) }
+        Role::Host => { let peer = handshake_read(&mut stream, deadline)?; handshake_write(&mut stream, &message,deadline)?; Ok(peer) }
     }).map_err(|e| format!("intercambio inicial: {e}"))?;
     let (waiting, confirmation) = pending.finish(&peer_message).map_err(str::to_owned)?;
     let confirmed = match role {
         Role::Client => {
-            write_frame(&mut stream, &confirmation)?;
-            let tag = read_frame(&mut stream, MAX_HANDSHAKE).map_err(|e|format!("confirmación del código: {e}"))?;
+            handshake_write(&mut stream, &confirmation,deadline)?;
+            let tag = handshake_read(&mut stream, deadline).map_err(|e|format!("confirmación del código: {e}"))?;
             waiting.verify(&tag).map_err(|_| "El código no coincide o la verificación fue rechazada".to_string())?
         }
         Role::Host => {
-            let tag = read_frame(&mut stream, MAX_HANDSHAKE).map_err(|e|format!("confirmación del código: {e}"))?;
+            let tag = handshake_read(&mut stream, deadline).map_err(|e|format!("confirmación del código: {e}"))?;
             let key = waiting.verify(&tag).map_err(|_| "El código no coincide o la verificación fue rechazada".to_string())?;
-            write_frame(&mut stream, &confirmation)?;
+            handshake_write(&mut stream, &confirmation,deadline)?;
             key
         }
     };
@@ -66,10 +90,13 @@ pub fn pair(mut stream: TcpStream, role: Role, code: &str) -> Result<SecureChann
     digest.update(b"bimu-noise-psk-v1\0");
     digest.update(confirmed.as_bytes());
     let psk: [u8; 32] = digest.finalize().into();
-    reconnect(stream, role, &psk)
+    reconnect_until(stream, role, &psk,deadline)
 }
 /// Authenticates a stored random secret before any application data is exchanged.
-pub fn reconnect(mut stream: TcpStream, role: Role, psk: &[u8; 32]) -> Result<SecureChannel, String> {
+pub fn reconnect(stream: TcpStream, role: Role, psk: &[u8; 32]) -> Result<SecureChannel, String> {
+    reconnect_until(stream,role,psk,Instant::now()+HANDSHAKE_TIMEOUT)
+}
+fn reconnect_until(mut stream:TcpStream,role:Role,psk:&[u8;32],deadline:Instant)->Result<SecureChannel,String>{
     stream.set_nodelay(true).map_err(|e| e.to_string())?;
     stream.set_nonblocking(false).map_err(|e| e.to_string())?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
@@ -85,18 +112,21 @@ pub fn reconnect(mut stream: TcpStream, role: Role, psk: &[u8; 32]) -> Result<Se
     match role {
         Role::Client => {
             let n = state.write_message(&[], &mut output).map_err(|e| e.to_string())?;
-            write_frame(&mut stream, &output[..n])?;
-            let reply = read_frame(&mut stream, MAX_HANDSHAKE).map_err(|e|format!("canal cifrado: {e}"))?;
+            handshake_write(&mut stream, &output[..n],deadline)?;
+            let reply = handshake_read(&mut stream, deadline).map_err(|e|format!("canal cifrado: {e}"))?;
             state.read_message(&reply, &mut output).map_err(|e| e.to_string())?;
         }
         Role::Host => {
-            let request = read_frame(&mut stream, MAX_HANDSHAKE).map_err(|e|format!("canal cifrado: {e}"))?;
+            let request = handshake_read(&mut stream, deadline).map_err(|e|format!("canal cifrado: {e}"))?;
             state.read_message(&request, &mut output).map_err(|e| e.to_string())?;
             let n = state.write_message(&[], &mut output).map_err(|e| e.to_string())?;
-            write_frame(&mut stream, &output[..n])?;
+            handshake_write(&mut stream, &output[..n],deadline)?;
         }
     }
     let transport = state.into_transport_mode().map_err(|e| e.to_string())?;
+    remaining(deadline).map_err(|e|read_error("autenticación",e))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e|e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_secs(5))).map_err(|e|e.to_string())?;
     Ok(SecureChannel { stream, transport })
 }
 pub struct SecureChannel { stream: TcpStream, transport: snow::TransportState }
@@ -197,4 +227,19 @@ mod tests {
         assert!(pair(TcpStream::connect(addr).unwrap(), Role::Client, "012346").is_err());
         server.join().unwrap();
     }
+}
+
+#[cfg(test)]mod deadline_tests{
+ use super::*;use std::{net::TcpListener,thread};
+ #[test]fn slow_drip_cannot_restart_the_handshake_deadline(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();
+  let peer=thread::spawn(move||{let(mut socket,_)=listener.accept().unwrap();let _=socket.write_all(&33u16.to_be_bytes());for _ in 0..20{thread::sleep(Duration::from_millis(30));if socket.write_all(&[1]).is_err(){break}}});
+  let mut stream=TcpStream::connect(addr).unwrap();let started=Instant::now();
+  let error=handshake_read(&mut stream,started+Duration::from_millis(150)).unwrap_err();
+  assert!(error.contains("tiempo de espera"),"{error}");assert!(started.elapsed()<Duration::from_secs(1));drop(stream);peer.join().unwrap();
+ }
+ #[test]fn an_expired_deadline_is_rejected_before_reading_or_writing(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let mut stream=TcpStream::connect(listener.local_addr().unwrap()).unwrap();let _peer=listener.accept().unwrap();
+  let deadline=Instant::now()-Duration::from_secs(1);assert!(handshake_read(&mut stream,deadline).is_err());assert!(handshake_write(&mut stream,b"hello",deadline).is_err());
+ }
 }

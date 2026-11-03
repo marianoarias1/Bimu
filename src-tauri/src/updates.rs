@@ -15,7 +15,7 @@ fn hash(path:&std::path::Path)->Result<String,String>{let mut file=std::fs::File
  let response=client()?.get("https://api.github.com/repos/marianoarias1/Bimu/releases/latest").header("Accept","application/vnd.github+json").send().await.map_err(|_|"No se pudo conectar con GitHub. Revisa tu conexion.")?;
  if response.status().as_u16()==404{s.candidate=None;s.download=None;return Ok(UpdateInfo{current,available:None,downloaded:false})}
  if !response.status().is_success(){return Err(format!("GitHub no pudo comprobar actualizaciones ({}).",response.status()))}
- let release:Release=response.json().await.map_err(|_|"GitHub devolvio una release invalida.")?;
+ let release:Release=crate::http_response::json_limited(response,1_000_000).await.map_err(|_|"GitHub devolvió una release inválida o demasiado grande.")?;
  let next=candidate(release,&current)?;
  let same=s.candidate.as_ref().zip(next.as_ref()).map(|(a,b)|a.0==b.0&&a.1.digest==b.1.digest).unwrap_or(false);
  if !same{s.download=None} s.candidate=next;

@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: src-tauri -> target
@@ -33,7 +35,15 @@ jobs:
           $makeappx = Join-Path $sdk.FullName 'x64\makeappx.exe'
           $signtool = Join-Path $sdk.FullName 'x64\signtool.exe'
           New-Item -ItemType Directory -Force msix-stage\Assets, msix-output | Out-Null
-          Copy-Item src-tauri\target\release\Bimu.exe msix-stage\Bimu.exe
+          $exe = Get-Item src-tauri\target\release\Bimu.exe -ErrorAction Stop
+          if ($exe.VersionInfo.CompanyName -cne 'Bimu') { throw "Unexpected executable publisher: $($exe.VersionInfo.CompanyName)" }
+          Copy-Item $exe.FullName msix-stage\Bimu.exe
+          @{
+            CompanyName = $exe.VersionInfo.CompanyName
+            ProductName = $exe.VersionInfo.ProductName
+            FileVersion = $exe.VersionInfo.FileVersion
+            ExecutableSHA256 = (Get-FileHash msix-stage\Bimu.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          } | ConvertTo-Json | Set-Content msix-output\Bimu-identidad.json -Encoding utf8
           Copy-Item store-msix\AppxManifest.xml msix-stage\AppxManifest.xml
           Add-Type -AssemblyName System.Drawing
           $source = [System.Drawing.Image]::FromFile((Resolve-Path src-tauri\icons\icon.png))
