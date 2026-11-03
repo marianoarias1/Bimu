@@ -1,5 +1,6 @@
 [
   {
+    "lockfile": "src-tauri/Cargo.lock",
     "id": "RUSTSEC-2024-0429",
     "package": "glib",
     "version": "0.18.5",
