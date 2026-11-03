@@ -25,7 +25,7 @@ for(const file of files){
  ])assert.ok(!pattern.test(text),`${kind} pattern in ${file}; inspect locally without logging the value`)
  if(file.startsWith('.github/workflows/')&&/\.ya?ml$/.test(file)){
   assert.ok(!/^\s*pull_request_target:/m.test(text),'avoid privileged untrusted PR execution')
-  for(const match of text.matchAll(/^\s*- uses:\s*(\S+)/gm))assert.ok(/^[-\w]+\/[-\w./]+@[0-9a-f]{40}$/.test(match[1]),'pin third-party action: '+file)
+  for(const match of text.matchAll(/^\s*(?:- )?uses:\s*(\S+)/gm))assert.ok(match[1]==='./.github/workflows/security.yml'||/^[-\w]+\/[-\w./]+@[0-9a-f]{40}$/.test(match[1]),'pin third-party action or use the local security workflow: '+file)
  }
 }
 console.log(`Security policy OK; ${scanned} bounded text files checked. Secret values are never printed.`)

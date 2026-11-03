@@ -7,10 +7,11 @@ on:
   schedule:
     - cron: '0 12 * * 1'
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:
-  group: security-${{ github.ref }}
+  group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   policy-and-npm:
@@ -50,6 +51,11 @@ jobs:
           toolchain: stable
       - name: Install pinned RustSec auditor
         run: cargo install cargo-audit --locked --version 0.22.2
+      - name: Record target dependency graphs
+        run: |
+          cargo tree --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --edges normal,build > rust-tree-windows.txt
+          cargo tree --locked --manifest-path src-tauri/Cargo.toml --target x86_64-unknown-linux-gnu --edges normal,build > rust-tree-linux.txt
+          git diff --exit-code -- src-tauri/Cargo.lock native-tests/Cargo.lock
       - name: Audit both Rust dependency locks
         shell: bash
         run: |
@@ -63,5 +69,6 @@ jobs:
           name: Bimu-security-rust
           path: |
             rust-audit-*.json
+            rust-tree-*.txt
             src-tauri/Cargo.lock
             native-tests/Cargo.lock

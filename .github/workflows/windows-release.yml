@@ -11,12 +11,19 @@ on:
       - '.github/workflows/windows-release.yml'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: windows-release
   cancel-in-progress: true
 jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
   build:
+    needs: security
+    permissions:
+      contents: write
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

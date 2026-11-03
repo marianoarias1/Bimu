@@ -27,6 +27,7 @@ Referencias:
 ## Automatización
 
 - `Security baseline`: por PR, push y semanal; permisos de lectura, acciones fijadas por SHA, npm audit, cargo-audit 0.22.2 en ambos lockfiles y reportes. Npm bloquea high/critical; RustSec bloquea vulnerabilidades, unsound y yanked. Avisos no bloqueantes son deuda a evaluar.
+- `Windows installer` requiere que finalice correctamente el workflow reutilizable `Security baseline` antes de compilar/publicar. Un resultado rojo bloquea esa publicación automática aunque se omita la revisión administrativa. El MSIX experimental sigue disponible para pruebas; no publica en Store automáticamente.
 - Dependabot propone cambios de npm, Cargo y GitHub Actions. No se habilita automerge ni se ejecuta `audit fix --force`.
 - `scripts/security-policy.mjs`: controla CSP, permisos genéricos, referencias de acciones y algunos patrones de secretos sin imprimir valores. Es un guard sencillo: no sustituye un escáner completo de secretos/SAST/pentest y omite binarios/textos de más de 2 MB.
 - El propietario debe hacer obligatorios los checks en la regla de `main`; añadir un workflow no lo hace obligatorio por sí solo.
