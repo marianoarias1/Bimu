@@ -26,7 +26,7 @@ Referencias:
 
 ## Automatización
 
-- `Security baseline`: por PR, push y semanal; permisos de lectura, acciones fijadas por SHA, npm audit, cargo-audit 0.22.2 en ambos lockfiles y reportes. Npm bloquea high/critical; RustSec bloquea vulnerabilidades, unsound y yanked. Avisos no bloqueantes son deuda a evaluar.
+- `Security baseline`: por PR, push y semanal; permisos de lectura, acciones fijadas por SHA, npm audit, cargo-audit 0.22.2 en ambos lockfiles y reportes. Npm bloquea high/critical; RustSec bloquea vulnerabilidades, unsound y yanked. La única exclusión de alcance es RUSTSEC-2024-0429 / glib 0.18.5 para Windows x64 hasta el 03/12/2026: el gate exige que Cargo confirme su ausencia de la resolución Windows, conserva el informe completo y falla ante su incorporación, aviso nuevo, vencimiento o evidencia incompleta. No es una aceptación para distribuir Linux. Avisos no bloqueantes son deuda a evaluar.
 - `Windows installer` requiere que finalice correctamente el workflow reutilizable `Security baseline` antes de compilar/publicar. Un resultado rojo bloquea esa publicación automática aunque se omita la revisión administrativa. El MSIX experimental sigue disponible para pruebas; no publica en Store automáticamente.
 - Dependabot propone cambios de npm, Cargo y GitHub Actions. No se habilita automerge ni se ejecuta `audit fix --force`.
 - `scripts/security-policy.mjs`: controla CSP, permisos genéricos, referencias de acciones y algunos patrones de secretos sin imprimir valores. Es un guard sencillo: no sustituye un escáner completo de secretos/SAST/pentest y omite binarios/textos de más de 2 MB.
