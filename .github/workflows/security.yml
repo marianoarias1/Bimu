@@ -33,7 +33,7 @@ jobs:
       - name: Inventory npm dependencies
         if: always()
         run: npm sbom --sbom-format cyclonedx > npm-sbom.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: Bimu-security-npm
@@ -71,7 +71,7 @@ jobs:
           # Reports must exist and parse; the policy checks findings and the
           # single reviewed target exclusion, not merely the scanner exit code.
           RUST_AUDIT_APP_EXIT="$app_status" RUST_AUDIT_TESTS_EXIT="$tests_status" node scripts/rust-audit-policy.mjs
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: Bimu-security-rust
