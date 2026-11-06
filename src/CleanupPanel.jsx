@@ -57,7 +57,7 @@ export function CleanupPanel({state}){
    <p className="cleanup-hint">{recycle?'Windows pedirá confirmar el vaciado de la papelera.':analysis.limited?'Análisis parcial. Solo se limpiarán los archivos encontrados.':'Se omiten archivos recientes, en uso o sin permiso.'}</p>
   </>}
   {summary&&<div className="cleanup-summary" role="status">
-   <p>{summary.removedFiles?`${size(summary.removedBytes)} en archivos eliminados`:'No se eliminaron archivos temporales.'}{summary.skipped?` · ${summary.skipped} omitidos`:''}</p>
+   {(summary.removedFiles||summary.skipped||!summary.recycleStatus)?<p>{summary.removedFiles?`${size(summary.removedBytes)} en archivos eliminados`:'No se eliminaron archivos temporales.'}{summary.skipped?` · ${summary.skipped} omitidos`:''}</p>:null}
    {summary.recycleStatus&&<p>{{emptied:'Papelera vaciada.',changed:'La papelera cambió. Volvé a analizarla.',notEmptied:'No se vació toda la papelera.'}[summary.recycleStatus]}</p>}
   </div>}
   {busy&&<p className="cleanup-hint" role="status">{busy==='analyze'?'Analizando…':'Limpiando selección…'}</p>}

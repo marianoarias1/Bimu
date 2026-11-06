@@ -72,7 +72,7 @@ mod desktop {
         fs::{self, File, Metadata, OpenOptions},
         io,
         os::windows::{
-            ffi::OsStringExt,
+            ffi::{OsStrExt, OsStringExt},
             fs::{MetadataExt, OpenOptionsExt},
             io::AsRawHandle,
         },
@@ -87,10 +87,11 @@ mod desktop {
     use windows_sys::Win32::{
         Foundation::HWND,
         Storage::FileSystem::{
-            FileDispositionInfo, GetFileInformationByHandle, SetFileInformationByHandle,
-            BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_READONLY,
-            FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-            FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+            FileDispositionInfo, GetFileInformationByHandle, GetFinalPathNameByHandleW,
+            SetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, DELETE,
+            FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO,
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY,
+            FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
         },
         UI::Shell::{
             FOLDERID_LocalAppData, SHEmptyRecycleBinW, SHGetKnownFolderPath, SHQueryRecycleBinW,
@@ -175,7 +176,7 @@ mod desktop {
     // components from being renamed or turned into junctions during traversal.
     fn open_directory(path: &Path) -> io::Result<File> {
         let file = OpenOptions::new()
-            .access_mode(FILE_READ_ATTRIBUTES)
+            .access_mode(FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY)
             .share_mode(FILE_SHARE_READ)
             .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
             .open(path)?;
@@ -188,7 +189,7 @@ mod desktop {
 
     fn root_guards(root: &Path) -> io::Result<Vec<File>> {
         let mut components = root.components();
-        if !matches!(components.next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)))
+        if !matches!(components.next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
             || components.next() != Some(Component::RootDir)
             || !components.all(|part| matches!(part, Component::Normal(_)))
         {
@@ -199,14 +200,45 @@ mod desktop {
         paths.into_iter().map(open_directory).collect()
     }
 
+    fn matches_handle_path(file: &File, path: &Path) -> bool {
+        // Verify the opened object itself. A junction or an unexpected
+        // filesystem redirection must not turn a Temp path into another file.
+        let mut actual = [0u16; 1024];
+        let length = unsafe {
+            GetFinalPathNameByHandleW(
+                file.as_raw_handle(),
+                actual.as_mut_ptr(),
+                actual.len() as u32,
+                0,
+            )
+        } as usize;
+        if length == 0 || length >= actual.len() {
+            return false;
+        }
+        let expected = path.as_os_str();
+        let prefix = r"\\?\";
+        let resolved = OsString::from_wide(&actual[..length]);
+        if resolved == expected {
+            return true;
+        }
+        prefix
+            .encode_utf16()
+            .chain(expected.encode_wide())
+            .eq(actual[..length].iter().copied())
+    }
+
     fn open_candidate(path: &Path) -> io::Result<File> {
         // No sharing: Windows rejects a file another process has open for
         // read/write/delete, even if that process would allow unlinking it.
-        OpenOptions::new()
+        let file = OpenOptions::new()
             .access_mode(FILE_READ_ATTRIBUTES | DELETE)
             .share_mode(0)
             .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-            .open(path)
+            .open(path)?;
+        if !matches_handle_path(&file, path) {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
+        Ok(file)
     }
 
     fn stamp(file: &File, now: SystemTime) -> Option<Stamp> {
@@ -482,6 +514,13 @@ mod desktop {
                     .as_nanos()
             ));
             fs::create_dir(&root).unwrap();
+            let root = fs::canonicalize(&root).unwrap();
+            let directory = root.join("nested");
+            fs::create_dir(&directory).unwrap();
+            let guard = open_directory(&directory).unwrap();
+            assert!(fs::rename(&directory, root.join("renamed")).is_err());
+            drop(guard);
+            fs::remove_dir(directory).unwrap();
             let old = SystemTime::now() - MIN_AGE - Duration::from_secs(60);
             let stale_file = |name: &str| {
                 let path = root.join(name);

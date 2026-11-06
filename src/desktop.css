@@ -929,3 +929,5 @@ html[data-lyrics=true] .desktop.compact .notch-player .player-controls .lyrics-t
 }
 .desktop.compact .notch-player .cleanup-actions button.utility-primary:hover:not(:disabled){filter:brightness(1.08)}
 .cleanup-actions button:disabled{opacity:.5;cursor:default}
+/* The browser preview uses the same compact height as the desktop notch. */
+html.desktop-preview .desktop.compact{height:min(var(--notch-height,54px),100vh)}
