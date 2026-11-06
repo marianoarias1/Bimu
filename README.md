@@ -89,3 +89,9 @@ Atajos 0.55.6: navegación superior de cinco columnas, iconos existentes de Pág
 ## Seguridad
 
 El proceso de revisión y reporte de problemas está en [SECURITY.md](SECURITY.md). La revisión inicial, el modelo de amenazas y la correspondencia con OWASP Top 10:2025, CIS Controls v8.1 y NIST SSDF/CSF están en [security/HARDENING.md](security/HARDENING.md) y [security/REVIEW-2026-11-03.md](security/REVIEW-2026-11-03.md). Estas referencias no constituyen una certificación de cumplimiento.
+
+### Volumen de Windows y Limpieza
+
+En Música, el botón de parlante abre el volumen general de la salida predeterminada de Windows y permite silenciarla. Bimu consulta el volumen mientras el panel está abierto para reflejar cambios hechos desde Windows.
+
+La página Limpieza se puede ordenar u ocultar desde Ajustes avanzados → Páginas. **Analizar** revisa los archivos temporales de la carpeta `Temp` del perfil local de Windows y estima el tamaño de la papelera. **Limpiar selección** actúa sobre los archivos analizados: omite los recientes (menos de 48 horas), los que están en uso, los que no puede abrir y los enlaces o redirecciones. No necesita permisos de administrador. La papelera se selecciona aparte y Windows confirma antes de vaciarla. El resumen distingue los archivos eliminados de los omitidos; el tamaño indicado es el de los archivos, no una medición exacta del espacio libre del disco.

@@ -869,3 +869,63 @@ html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=antici
 .desktop.compact .notch-player-content{position:absolute;inset:0 auto auto 0;box-sizing:border-box;width:var(--notch-width,483px);height:var(--notch-height,152px);padding:8px 36px 7px 48px}
 html[data-notch=peek] .desktop.compact .notch-player{visibility:visible;opacity:1;transition-delay:0ms}
 @media(prefers-reduced-motion:reduce){.desktop.compact .notch-player{transition:none}}
+
+/* Utility controls keep the notch's palette and stay inside its hit region. */
+.desktop.compact .notch-player{
+ --utility-accent:#c3b3f4;
+ --utility-accent-text:#221935;
+}
+html[data-theme=light] .desktop.compact .notch-player{
+ --utility-accent:#684a9b;
+ --utility-accent-text:#fff;
+}
+.volume-control{position:absolute;right:0;top:0;z-index:4;height:24px}
+.desktop.compact .notch-player .player-controls .volume-toggle{
+ display:grid;place-items:center;width:24px;height:24px;border-radius:7px;
+ color:var(--control-muted);padding:0;
+}
+.desktop.compact .notch-player .player-controls .volume-toggle:is(:hover,[aria-expanded=true]){
+ color:var(--control-ink);background:var(--control-hover)
+}
+.volume-popover{
+ position:absolute;right:0;bottom:42px;width:168px;box-sizing:border-box;
+ border:1px solid var(--control-border);border-radius:11px;
+ padding:6px 8px;background:var(--control-surface);color:var(--control-ink);
+ box-shadow:0 4px 12px #0003;
+}
+.volume-popover strong{display:block;font-size:10px;font-weight:650;line-height:13px}
+.volume-row{display:grid;grid-template-columns:18px minmax(0,1fr) 29px;gap:5px;align-items:center;height:20px}
+.volume-row input{width:100%;min-width:0;margin:0;accent-color:var(--utility-accent);cursor:pointer}
+.volume-row span{text-align:right;font-size:9px;font-variant-numeric:tabular-nums}
+.volume-popover small{display:block;font-size:9px;color:var(--control-muted)}
+html:not([data-lyrics=true]) .notch-page:has(.volume-popover) .player-track{
+ max-width:calc(100% - 174px)
+}
+html[data-lyrics=true] .volume-popover{top:29px;bottom:auto;max-width:calc(100vw - 100px)}
+/* Reserve the two edges for lyrics and speaker in the split player. */
+html[data-lyrics=true] .desktop.compact .notch-player .player-controls{gap:clamp(1px,1.5vw,9px)}
+html[data-lyrics=true] .desktop.compact .notch-player .player-controls .lyrics-toggle{width:22px}
+.cleanup-panel{
+ box-sizing:border-box;max-width:360px;margin:3px auto 0;padding:0 0 2px;
+ max-height:calc(var(--notch-height,200px) - 48px);overflow:auto;scrollbar-width:thin;
+ color:var(--control-ink);font-size:11px;
+}
+.cleanup-heading{display:flex;gap:8px;align-items:center;margin:0 0 5px}
+.cleanup-heading strong{display:block;font-size:14px;line-height:17px}
+.cleanup-heading small{display:block;font-size:10px;color:var(--control-muted);line-height:13px}
+.cleanup-category{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:25px;cursor:pointer}
+.cleanup-category + .cleanup-category{border-top:1px solid var(--control-border)}
+.cleanup-category span:last-child{font-size:10px;color:var(--control-muted);font-variant-numeric:tabular-nums}
+.cleanup-category input{width:13px;height:13px;margin:0;accent-color:var(--utility-accent)}
+.cleanup-hint,.cleanup-summary p{margin:4px 0;font-size:10px;line-height:13px;color:var(--control-muted)}
+.cleanup-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:6px}
+.desktop.compact .notch-player .cleanup-actions button{
+ padding:4px 9px;min-height:24px;border-radius:7px;border:1px solid var(--control-border);
+ background:var(--control-surface);color:var(--control-ink);font:inherit;cursor:pointer;
+}
+.desktop.compact .notch-player .cleanup-actions button:hover:not(:disabled){background:var(--control-hover)}
+.desktop.compact .notch-player .cleanup-actions button.utility-primary{
+ background:var(--utility-accent);border-color:transparent;color:var(--utility-accent-text);font-weight:650;
+}
+.desktop.compact .notch-player .cleanup-actions button.utility-primary:hover:not(:disabled){filter:brightness(1.08)}
+.cleanup-actions button:disabled{opacity:.5;cursor:default}
