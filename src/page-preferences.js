@@ -1,4 +1,4 @@
-export const PAGE_DEFINITIONS=[['music','Música'],['shelf','Archivos'],['modes','Atajos rápidos'],['weather','Clima'],['clipboard','Portapapeles']]
+export const PAGE_DEFINITIONS=[['music','Música'],['shelf','Archivos'],['modes','Atajos rápidos'],['weather','Clima'],['clipboard','Portapapeles'],['cleanup','Limpieza']]
 export const DEFAULT_PAGES=PAGE_DEFINITIONS.map(([id])=>({id,enabled:true}))
 export function normalizePages(value){
  const seen=new Set(),out=[]

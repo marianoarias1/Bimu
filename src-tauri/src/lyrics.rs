@@ -75,7 +75,19 @@ pub async fn lyrics_lookup(title: String, artist: String, duration: f64) -> Resu
   listener.set_nonblocking(true).unwrap();
   let handle=std::thread::spawn(move||{let mut count=0;let deadline=std::time::Instant::now()+Duration::from_secs(10);for(status,body)in statuses{
    let mut socket=loop{match listener.accept(){Ok((socket,_))=>break socket,Err(error)if error.kind()==std::io::ErrorKind::WouldBlock=>{assert!(std::time::Instant::now()<deadline,"request did not arrive");std::thread::sleep(Duration::from_millis(5));},Err(error)=>panic!("{error}")}};
-   socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();let mut request=[0;4096];let _=socket.read(&mut request).unwrap();
+   // Accepted sockets can inherit nonblocking mode on Windows. Wait for the
+   // complete request headers before replying and closing the connection.
+   socket.set_nonblocking(false).unwrap();
+   socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+   let mut request=Vec::new();
+   let mut incoming=std::io::BufReader::new(&mut socket);
+   for _ in 0..4096 {
+    let mut byte=[0];
+    incoming.read_exact(&mut byte).unwrap();
+    request.push(byte[0]);
+    if request.ends_with(b"\r\n\r\n"){break}
+   }
+   assert!(request.ends_with(b"\r\n\r\n"),"incomplete request headers");
    write!(socket,"HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();count+=1;
   }count});(url,handle)
  }
