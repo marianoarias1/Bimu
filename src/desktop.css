@@ -943,7 +943,7 @@ html[data-lyrics=true] .desktop.compact .notch-player .player-controls .lyrics-t
 .cleanup-category:has(input:disabled){cursor:default}
 .cleanup-category span:last-child{font-size:10px;color:var(--control-muted);font-variant-numeric:tabular-nums}
 .desktop .cleanup-category input[type=checkbox]{width:13px;height:13px;margin:0;accent-color:var(--utility-accent)}
-.cleanup-hint,.cleanup-summary p{margin:4px 0;font-size:10px;line-height:13px;color:var(--control-muted)}
+.cleanup-hint{min-height:39px;margin:4px 0;font-size:10px;line-height:13px;color:var(--control-muted)}
 .cleanup-actions{display:flex;gap:6px;margin-top:6px}
 .desktop.compact .notch-player .cleanup-actions button{
  padding:4px 8px;min-height:24px;border-radius:7px;border:1px solid var(--control-border);
@@ -954,14 +954,6 @@ html[data-lyrics=true] .desktop.compact .notch-player .player-controls .lyrics-t
  background:var(--utility-accent);border-color:transparent;color:var(--audio-accent-ink,#16121c);font-weight:650;
 }
 .desktop.compact .notch-player .cleanup-actions button.utility-primary:hover:not(:disabled){filter:brightness(1.06)}
-.cleanup-progress{max-width:360px;margin:12px auto 0}
-.cleanup-progress progress{
- display:block;appearance:none;width:100%;height:6px;margin:6px 0;border:0;
- border-radius:6px;background:var(--control-border);overflow:hidden;
-}
-.cleanup-progress progress::-webkit-progress-bar{background:transparent}
-.cleanup-progress progress::-webkit-progress-value{background:var(--utility-accent);border-radius:inherit}
-.cleanup-progress progress:indeterminate{background:repeating-linear-gradient(120deg,var(--control-border) 0 8px,color-mix(in srgb,var(--utility-accent) 35%,transparent) 8px 16px)}
 @media(prefers-reduced-motion:reduce){.cleanup-ring-fill{transition:none}}
 /* The browser preview uses the same compact height as the desktop notch. */
 html.desktop-preview .desktop.compact{height:min(var(--notch-height,54px),100vh)}
