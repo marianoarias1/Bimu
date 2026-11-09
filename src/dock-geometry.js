@@ -6,6 +6,9 @@ export function notchSize(edge,state,size='M',tab='home',receiving=false) {
   // Expanded pages retain the approved horizontal layout on every edge.
   if(state==='open')return tab==='quick-settings'?[480,360]:[680,tab==='home'?350:570]
   const factor=state==='peek'?1.15:state==='idle'||state==='anticipate'?({S:.85,M:1,L:1.15}[size]||1):1
+  if(state==='peek'&&tab==='cleanup')return [483,152]
+  if(state==='peek'&&tab==='cleanup-details')return [483,224]
+  if(state==='peek'&&tab==='lyrics-volume')return [598,206]
   const lyric=tab==='lyrics'||tab==='lyrics-loading'||tab==='caps'
   const base=state==='retracted'?(lateral?[7,64]:[64,7]):state==='peek'?(lyric?[520,142]:[420,132]):state==='anticipate'?(lateral?(lyric?[188,110]:[42,132]):(lyric?[332,30]:[162,30])):(lateral?(lyric?[180,104]:[40,126]):(lyric?[320,27]:[150,27]))
   return base.map(n=>Math.round(n*factor))

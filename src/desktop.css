@@ -869,3 +869,91 @@ html[data-lyrics=true]:is([data-notch=idle],[data-notch=peek],[data-notch=antici
 .desktop.compact .notch-player-content{position:absolute;inset:0 auto auto 0;box-sizing:border-box;width:var(--notch-width,483px);height:var(--notch-height,152px);padding:8px 36px 7px 48px}
 html[data-notch=peek] .desktop.compact .notch-player{visibility:visible;opacity:1;transition-delay:0ms}
 @media(prefers-reduced-motion:reduce){.desktop.compact .notch-player{transition:none}}
+
+/* Utility controls keep the notch's palette and stay inside its hit region. */
+.desktop.compact .notch-player{
+ --utility-accent:var(--audio-accent,#c3b3f4);
+}
+.timeline-scrubber{flex:1;min-width:0;position:relative;height:14px;display:grid;align-items:center}
+.timeline-scrubber input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;appearance:none;touch-action:none}
+.timeline-scrubber input::-webkit-slider-thumb{appearance:none;width:1px;height:14px}
+.timeline-scrubber:has(input:focus-visible){outline:1px solid var(--utility-accent);outline-offset:4px;border-radius:6px}
+.timeline-thumb{position:absolute;z-index:0;top:50%;width:8px;height:8px;border-radius:50%;background:var(--control-ink);box-shadow:0 0 0 1px var(--control-surface);transform:translate(-50%,-50%);pointer-events:none}
+.timeline-scrubber:is(:hover,:focus-within,.is-scrubbing) .timeline-thumb{background:var(--utility-accent);box-shadow:0 0 0 2px var(--control-surface)}
+.desktop.compact .notch-player .timeline-scrubber.is-scrubbing .player-wave i{transition:none}
+.player-error{z-index:2;bottom:12px;right:36px;text-align:center;pointer-events:none;color:var(--control-ink);background:var(--control-surface);border-radius:4px}
+
+.volume-control{position:absolute;right:0;top:0;z-index:4;height:24px}
+.desktop.compact .notch-player .player-controls .volume-toggle{
+ display:grid;place-items:center;width:24px;height:24px;border-radius:7px;
+ color:var(--control-muted);padding:0;
+}
+.desktop.compact .notch-player .player-controls .volume-toggle:is(:hover,[aria-expanded=true]){
+ color:var(--control-ink);background:var(--control-hover)
+}
+.volume-popover{
+ position:absolute;right:0;bottom:42px;width:168px;box-sizing:border-box;
+ border:1px solid var(--control-border);border-radius:11px;
+ padding:6px 8px;background:var(--control-surface);color:var(--control-ink);
+ box-shadow:0 4px 12px #0003;
+}
+.volume-popover strong{display:block;font-size:10px;font-weight:650;line-height:13px}
+.volume-row{display:grid;grid-template-columns:18px minmax(0,1fr) 29px;gap:5px;align-items:center;height:20px}
+.volume-row input{width:100%;min-width:0;height:18px;margin:0;appearance:none;background:transparent;cursor:pointer}
+.volume-row input::-webkit-slider-runnable-track{height:3px;border-radius:4px;background:linear-gradient(to right,var(--utility-accent) 0 var(--volume-fill),var(--control-border) var(--volume-fill) 100%)}
+.volume-row input::-webkit-slider-thumb{appearance:none;width:10px;height:10px;margin-top:-3.5px;border-radius:50%;background:var(--utility-accent)}
+.volume-row input:focus-visible{outline:1px solid var(--utility-accent);outline-offset:2px;border-radius:4px}
+.volume-row input:disabled{opacity:.5;cursor:default}
+.volume-row span{text-align:right;font-size:9px;font-variant-numeric:tabular-nums}
+.volume-popover small{display:block;font-size:9px;color:var(--control-muted)}
+html:not([data-lyrics=true]) .notch-page:has(.volume-popover) .player-track{
+ max-width:calc(100% - 174px)
+}
+html[data-lyrics=true] .volume-popover{top:29px;bottom:auto;max-width:calc(100vw - 100px)}
+/* Reserve the two edges for lyrics and speaker in the split player. */
+html[data-lyrics=true] .desktop.compact .notch-player .player-controls{gap:clamp(1px,1.5vw,9px)}
+html[data-lyrics=true] .desktop.compact .notch-player .player-controls .lyrics-toggle{width:22px}
+.cleanup-panel{
+ box-sizing:border-box;margin:6px 0 0;max-height:calc(var(--notch-height,224px) - 48px);
+ overflow:auto;scrollbar-width:thin;color:var(--control-ink);font-size:11px;
+}
+.cleanup-panel .clipboard-heading button:disabled,.cleanup-actions button:disabled{opacity:.5;cursor:default}
+.cleanup-panel .clipboard-empty svg{color:var(--control-ink)}
+.cleanup-detail-grid{
+ display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;
+ gap:16px;max-width:380px;margin:10px auto 2px;
+}
+.cleanup-ring{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:1;align-self:center}
+.cleanup-ring svg{width:100%;height:100%;position:absolute;inset:0;fill:none;stroke-width:5.5}
+.cleanup-ring-track{stroke:var(--control-border)}
+.cleanup-ring-fill{stroke:var(--utility-accent);stroke-linecap:round;transition:stroke-dasharray 180ms ease,opacity 180ms ease}
+.cleanup-ring span{display:grid;justify-items:center;line-height:1.2}
+.cleanup-ring strong{font-size:16px;font-variant-numeric:tabular-nums}
+.cleanup-ring small{font-size:9px;color:var(--control-muted)}
+.cleanup-categories{display:grid;gap:4px}
+.cleanup-category{
+ display:grid;grid-template-columns:13px minmax(0,1fr) auto;gap:6px;align-items:center;
+ min-height:26px;box-sizing:border-box;padding:3px 6px;border:1px solid var(--control-border);
+ border-radius:7px;background:var(--control-surface);cursor:pointer;
+}
+.cleanup-category:has(input:checked){
+ border-color:color-mix(in srgb,var(--utility-accent) 40%,var(--control-border));
+ background:color-mix(in srgb,var(--utility-accent) 9%,var(--control-surface));
+}
+.cleanup-category:has(input:disabled){cursor:default}
+.cleanup-category span:last-child{font-size:10px;color:var(--control-muted);font-variant-numeric:tabular-nums}
+.desktop .cleanup-category input[type=checkbox]{width:13px;height:13px;margin:0;accent-color:var(--utility-accent)}
+.cleanup-hint{min-height:39px;margin:4px 0;font-size:10px;line-height:13px;color:var(--control-muted)}
+.cleanup-actions{display:flex;gap:6px;margin-top:6px}
+.desktop.compact .notch-player .cleanup-actions button{
+ padding:4px 8px;min-height:24px;border-radius:7px;border:1px solid var(--control-border);
+ background:var(--control-surface);color:var(--control-ink);font:inherit;font-size:10px;cursor:pointer;
+}
+.desktop.compact .notch-player .cleanup-actions button:hover:not(:disabled){background:var(--control-hover)}
+.desktop.compact .notch-player .cleanup-actions button.utility-primary{
+ background:var(--utility-accent);border-color:transparent;color:var(--audio-accent-ink,#16121c);font-weight:650;
+}
+.desktop.compact .notch-player .cleanup-actions button.utility-primary:hover:not(:disabled){filter:brightness(1.06)}
+@media(prefers-reduced-motion:reduce){.cleanup-ring-fill{transition:none}}
+/* The browser preview uses the same compact height as the desktop notch. */
+html.desktop-preview .desktop.compact{height:min(var(--notch-height,54px),100vh)}

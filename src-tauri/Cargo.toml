@@ -1,6 +1,6 @@
 [package]
 name = "mascota-companero"
-version = "0.55.11"
+version = "0.55.12"
 description = "Bimu"
 authors = ["Mariano Arias"]
 edition = "2021"
@@ -39,4 +39,4 @@ clipboard-win = "5.4"
 winreg = "0.55"
 windows = { version = "0.57", features = ["ApplicationModel", "Foundation", "Media_Control", "Storage_Streams", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints"] }
 
-windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Storage_FileSystem", "Win32_UI_Shell"] }
