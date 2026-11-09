@@ -8,5 +8,6 @@ export function equalizerColors(background,swatch,neutral=false){
  // Start with the selected hue and blend toward the contrasting end until readable.
  let accent=source
  for(let n=0;n<=20;n++){const t=n/20;accent=source.map((v,i)=>Math.round(v*(1-t)+foreground[i]*t));if(contrast(accent,bg)>=3)break}
- return {base:`rgb(${foreground.join(',')})`,accent:`rgb(${accent.join(',')})`}
+ const accentInk=contrast([255,255,255],accent)>=contrast([0,0,0],accent)?'#fff':'#000'
+ return {accentInk,base:`rgb(${foreground.join(',')})`,accent:`rgb(${accent.join(',')})`}
 }
