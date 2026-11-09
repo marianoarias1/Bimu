@@ -78,7 +78,7 @@ export function VolumeControl({native,open,setOpen}){
    <strong>Volumen de Windows</strong>
    <div className="volume-row">
     <button type="button" disabled={!volume} aria-label={volume?.muted?'Quitar silencio':'Silenciar'} title={volume?.muted?'Quitar silencio':'Silenciar'} onClick={()=>change({muted:!volume.muted})}>{volume?.muted?<VolumeX size={14}/>:<Volume2 size={14}/>}</button>
-    <input type="range" min="0" max="100" value={volume?.level??0} disabled={!volume} aria-label="Nivel de volumen de Windows" aria-valuetext={volume?`${volume.level} por ciento`:undefined} onChange={event=>change({level:Number(event.target.value)})}/>
+    <input type="range" min="0" max="100" style={{'--volume-fill':`${volume?.level??0}%`}} value={volume?.level??0} disabled={!volume} aria-label="Nivel de volumen de Windows" aria-valuetext={volume?`${volume.level} por ciento`:undefined} onChange={event=>change({level:Number(event.target.value)})}/>
     <span>{volume?`${volume.level} %`:'—'}</span>
    </div>
    {!volume&&<small role="status">{error||'Consultando…'}</small>}

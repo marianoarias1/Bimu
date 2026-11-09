@@ -22,6 +22,7 @@ pub struct Summary {
     removed_bytes: u64,
     removed_files: u64,
     skipped: u64,
+    recycle_bytes: u64,
     recycle_status: Option<&'static str>,
 }
 
@@ -80,7 +81,7 @@ mod desktop {
         ptr::{null, null_mut},
         time::{Duration, Instant, SystemTime},
     };
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
     use windows::Win32::System::Com::{
         CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
     };
@@ -95,7 +96,7 @@ mod desktop {
         },
         UI::Shell::{
             FOLDERID_LocalAppData, SHEmptyRecycleBinW, SHGetKnownFolderPath, SHQueryRecycleBinW,
-            SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHQUERYRBINFO,
+            SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHQUERYRBINFO,
         },
     };
 
@@ -433,6 +434,16 @@ mod desktop {
         Ok(analysis)
     }
 
+    #[derive(Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Progress {
+        plan_id: u32,
+        processed: usize,
+        total: usize,
+        removed_bytes: u64,
+        phase: &'static str,
+    }
+
     pub(super) fn run(
         app: &tauri::AppHandle,
         plan_id: u32,
@@ -456,17 +467,29 @@ mod desktop {
         // Consume the preview before any destructive action so it cannot be replayed.
         let plan = state.plan.take().ok_or(EXPIRED)?;
         let mut summary = Summary::default();
+        let total = if temporary { plan.files.len() } else { 0 };
+        let emit = |phase: &'static str, processed, removed_bytes| {
+            let _ = app.emit_to("main", "cleanup-progress", Progress {
+                plan_id, processed, total, removed_bytes, phase,
+            });
+        };
         if temporary {
+            emit("temporary", 0, 0);
+            let mut last_event = Instant::now();
             summary.skipped = plan.analysis.skipped;
             let removed = temp_root().and_then(|root| {
                 let _guards = root_guards(&root).ok()?;
-                for candidate in &plan.files {
+                for (index, candidate) in plan.files.iter().enumerate() {
                     if remove_candidate(&root, candidate).is_ok() {
                         summary.removed_files += 1;
                         summary.removed_bytes =
                             summary.removed_bytes.saturating_add(candidate.stamp.size);
                     } else {
                         summary.skipped += 1;
+                    }
+                    if last_event.elapsed() >= Duration::from_millis(100) || index + 1 == total {
+                        emit("temporary", index + 1, summary.removed_bytes);
+                        last_event = Instant::now();
                     }
                 }
                 Some(())
@@ -476,6 +499,7 @@ mod desktop {
             }
         }
         if recycle {
+            emit("recycle", total, summary.removed_bytes);
             let before = query_bin();
             summary.recycle_status = Some(if before != plan.analysis.recycle {
                 "changed"
@@ -484,11 +508,13 @@ mod desktop {
                     .get_webview_window("main")
                     .and_then(|window| window.hwnd().ok())
                     .map_or(null_mut(), |hwnd| hwnd.0 as HWND);
-                // Keep Windows' native confirmation; do not suppress it.
+                // The user selected the bin and pressed the cleanup button in Bimu.
                 let status = unsafe {
-                    SHEmptyRecycleBinW(owner, null(), SHERB_NOPROGRESSUI | SHERB_NOSOUND)
+                    SHEmptyRecycleBinW(owner, null(), SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND)
                 };
-                if status >= 0 && query_bin().is_some_and(|value| value.files == 0) {
+                let after = query_bin();
+                if status >= 0 && after.is_some_and(|value| value.files == 0) {
+                    summary.recycle_bytes = before.map_or(0, |value| value.bytes);
                     "emptied"
                 } else {
                     "notEmptied"

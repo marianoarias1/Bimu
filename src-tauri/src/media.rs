@@ -13,6 +13,8 @@ pub struct MediaState {
     title: String,
     artist: String,
     playing: bool,
+    source: String,
+    seek_range: Option<[f64; 2]>,
     position: f64,
     duration: f64,
     sampled_at_ms: u64,
@@ -40,7 +42,14 @@ async fn media_state_inner(include_cover: bool) -> Result<Option<MediaState>, St
         let title = props.Title().map(|v| v.to_string_lossy()).unwrap_or_default();
         if title.is_empty() { return Ok(None) }
         let artist = props.Artist().map(|v| v.to_string_lossy()).unwrap_or_default();
-        let playing = session.GetPlaybackInfo().and_then(|v| v.PlaybackStatus()).map(|v| v == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing).unwrap_or(false);
+        let playback = session.GetPlaybackInfo().ok();
+        let playing = playback.as_ref().and_then(|v| v.PlaybackStatus().ok()) == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
+        let source = session.SourceAppUserModelId().map(|v| v.to_string_lossy()).unwrap_or_default();
+        let seek_range = playback
+            .and_then(|v| v.Controls().ok())
+            .filter(|v| v.IsPlaybackPositionEnabled().unwrap_or(false))
+            .filter(|_| !source.is_empty())
+            .and_then(|_| seek_range(&session));
         let sampled_at_ms=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis().min(u64::MAX as u128) as u64;
         let (position,duration) = session.GetTimelineProperties().map(|v| {
             let raw=v.Position().map(|x| x.Duration as f64/10_000_000.0).unwrap_or(0.0);
@@ -65,7 +74,7 @@ async fn media_state_inner(include_cover: bool) -> Result<Option<MediaState>, St
                 } else { None }
             } else { None }
         } else { None } } else { None };
-        return Ok(Some(MediaState { title, artist, playing, position, duration, sampled_at_ms, cover }))
+        return Ok(Some(MediaState { title, artist, playing, source, seek_range, position, duration, sampled_at_ms, cover }))
     }
     #[cfg(not(windows))] { let _ = include_cover; Ok(None) }
 }
@@ -94,4 +103,52 @@ pub async fn media_control(action: String) -> Result<(), String> {
         return if request.await.map_err(|e| e.to_string())? { Ok(()) } else { Err("El reproductor no pudo realizar la acción".into()) }
     }
     #[cfg(not(windows))] { let _ = action; Err("Disponible en Windows".into()) }
+}
+
+#[cfg(windows)]
+fn seek_range(session: &windows::Media::Control::GlobalSystemMediaTransportControlsSession) -> Option<[f64; 2]> {
+    let timeline = session.GetTimelineProperties().ok()?;
+    let end = timeline.EndTime().ok()?.Duration;
+    let start = timeline.StartTime().ok()?.Duration.max(0);
+    let reported_min = timeline.MinSeekTime().ok()?.Duration;
+    let reported_max = timeline.MaxSeekTime().ok()?.Duration;
+    let minimum = reported_min.max(start);
+    // Some clients leave both seek limits at zero while reporting a duration.
+    let maximum = if reported_min == 0 && reported_max == 0 { end } else { reported_max.min(end) };
+    (maximum > minimum).then_some([minimum as f64 / 10_000_000., maximum as f64 / 10_000_000.])
+}
+
+#[tauri::command]
+pub async fn media_seek(source: String, title: String, artist: String, seconds: f64) -> Result<f64, String> {
+    if !seconds.is_finite() || seconds < 0. {
+        return Err("Posición de reproducción inválida.".into());
+    }
+    #[cfg(windows)]
+    {
+        let session = current().await.map_err(|_| "No hay una reproducción activa.")?;
+        let props = session.TryGetMediaPropertiesAsync().map_err(|_| "No se pudo consultar la reproducción.")?.await.map_err(|_| "No se pudo consultar la reproducción.")?;
+        if session.SourceAppUserModelId().map(|v| v.to_string_lossy()).unwrap_or_default() != source
+            || props.Title().map(|v| v.to_string_lossy()).unwrap_or_default() != title
+            || props.Artist().map(|v| v.to_string_lossy()).unwrap_or_default() != artist
+        {
+            return Err("La reproducción cambió. Volvé a mover la barra.".into());
+        }
+        if !session.GetPlaybackInfo().and_then(|v| v.Controls()).and_then(|v| v.IsPlaybackPositionEnabled()).unwrap_or(false) {
+            return Err("El reproductor no permite cambiar la posición.".into());
+        }
+        let [min, max] = seek_range(&session).ok_or("La reproducción no tiene una posición ajustable.")?;
+        let target = seconds.clamp(min, max);
+        let request = session.TryChangePlaybackPositionAsync((target * 10_000_000.).round() as i64)
+            .map_err(|_| "No se pudo cambiar la posición.")?;
+        if request.await.unwrap_or(false) {
+            Ok(target)
+        } else {
+            Err("El reproductor no aceptó el cambio de posición.".into())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (source, title, artist);
+        Err("Disponible en Windows".into())
+    }
 }
