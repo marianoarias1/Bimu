@@ -1,6 +1,6 @@
 [package]
 name = "mascota-companero"
-version = "0.55.12"
+version = "0.55.13"
 description = "Bimu"
 authors = ["Mariano Arias"]
 edition = "2021"
@@ -30,7 +30,7 @@ rand = "0.8"
 semver = "1"
 chrono = "0.4"
 chrono-tz = "0.10"
-base64 = "0.22"
+base64 = "0.23"
 arboard = { version = "3.6", features = ["image-data"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 

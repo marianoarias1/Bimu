@@ -85,6 +85,19 @@ fn receive_payload(channel:&mut SecureChannel,file_limit:usize)->Result<Option<C
 }
 #[cfg(test)] mod tests{
  use super::*;use crate::pairing_core::Role;use crate::pairing_transport::pair;use std::{net::{TcpListener,TcpStream},thread};
+ #[test] fn image_wire_format_stays_compatible_across_base64_versions(){
+  // A fixed wire fixture is exercised by the app (new base64) and native-tests
+  // (the previous base64), so an encoder/decoder changing together cannot hide drift.
+  let fixture=br#"{"kind":"image","width":1,"height":1,"rgba":"+///AA=="}"#;
+  let image=ClipboardPayload::Image{width:1,height:1,rgba:vec![251,255,255,0]};
+  assert_eq!(decode(fixture).unwrap(),image);
+  let wire:serde_json::Value=serde_json::from_slice(&encode(image).unwrap()).unwrap();
+  assert_eq!(wire,serde_json::from_slice::<serde_json::Value>(fixture).unwrap());
+  for invalid in ["+///AA","+///AB==","+///AA==\n"]{
+   let data=serde_json::to_vec(&serde_json::json!({"kind":"image","width":1,"height":1,"rgba":invalid})).unwrap();
+   assert!(decode(&data).is_err(),"must reject malformed base64");
+  }
+ }
  #[test] fn text_and_images_round_trip_over_paired_channel(){
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();
   let text="¡hola! ".repeat(10000);let sent=text.clone();
