@@ -16,4 +16,4 @@ sha2="0.10"
 base64="0.23"
 
 [target.'cfg(windows)'.dependencies]
-winreg="0.55"
+winreg="0.56"
