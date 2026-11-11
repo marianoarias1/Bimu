@@ -40,12 +40,27 @@ export function isBrowserTestUpdate(files, before, after, oldLock, newLock) {
     && isDeepStrictEqual(removeBrowserLockEntry(oldLock), removeBrowserLockEntry(newLock))
 }
 
+const nativeManifests = new Set(['native-tests/Cargo.toml', 'native-tests/Cargo.lock'])
+const nativeAllowed = new Set([
+  ...nativeManifests,
+  '.github/workflows/verify-pull-request.yml',
+  'scripts/browser-test-update.mjs',
+  'tests/browser-test-update.test.mjs',
+])
+
+export function isNativeTestUpdate(files) {
+  return files.some(file => nativeManifests.has(file))
+    && files.every(file => nativeAllowed.has(file))
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const base = process.argv[2]
   if (!base || !/^[\da-f]{40}$/i.test(base)) throw new Error('Expected the pull request base commit SHA')
   const git = (...args) => execFileSync('git', args, {encoding:'utf8'})
   const files = git('diff','--name-only','-z',base,'HEAD','--').split('\0').filter(Boolean)
-  if (!files.includes('package.json') || !files.includes('package-lock.json') || files.some(file => !allowed.has(file))) {
+  if (isNativeTestUpdate(files)) {
+    console.log(true)
+  } else if (!files.includes('package.json') || !files.includes('package-lock.json') || files.some(file => !allowed.has(file))) {
     console.log(false)
   } else {
     const read = (ref, file) => JSON.parse(git('show',ref+':'+file))

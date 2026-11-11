@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {isBrowserTestUpdate} from '../scripts/browser-test-update.mjs'
+import {isBrowserTestUpdate,isNativeTestUpdate} from '../scripts/browser-test-update.mjs'
 
 const files=['package.json','package-lock.json']
 const version=number=>({
@@ -34,4 +34,18 @@ test('the exception does not cover application files, scripts, version changes o
     else modified.packages['node_modules/'+name].version='99.0.0'
     assert.equal(check(files,version('1.65.0'),modified),false)
   }
+})
+
+test('native test dependency changes are separate from application dependencies',()=>{
+  const native=['native-tests/Cargo.toml','native-tests/Cargo.lock']
+  assert.equal(isNativeTestUpdate(native),true)
+  assert.equal(check(native),false)
+  assert.equal(isNativeTestUpdate([...native,'scripts/browser-test-update.mjs','.github/workflows/verify-pull-request.yml']),true)
+  assert.equal(isNativeTestUpdate(['native-tests/Cargo.lock']),true)
+  for(const production of ['src-tauri/Cargo.toml','src-tauri/Cargo.lock','src-tauri/src/clipboard_protocol.rs','package.json','store-msix/AppxManifest.xml']){
+    assert.equal(isNativeTestUpdate([...native,production]),false)
+  }
+  assert.equal(isNativeTestUpdate([]),false)
+  assert.equal(isNativeTestUpdate(['scripts/browser-test-update.mjs']),false)
+  assert.equal(isNativeTestUpdate(['native-tests/Cargo.lock','native-tests/../src-tauri/Cargo.toml']),false)
 })

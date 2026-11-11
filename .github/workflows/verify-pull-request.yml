@@ -49,7 +49,7 @@ jobs:
         run: |
           $testOnly = node scripts/browser-test-update.mjs $env:PR_BASE
           if ($LASTEXITCODE -ne 0) { throw 'Could not classify the dependency changes.' }
-          if ($testOnly -ceq 'true') { Write-Host 'Browser test dependency only: build the verification installer without a new release version.'; exit 0 }
+          if ($testOnly -ceq 'true') { Write-Host 'Test dependency only: build the verification installer without a new release version.'; exit 0 }
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $tags = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name'
           if ($LASTEXITCODE -ne 0) { throw 'Could not check existing releases.' }
