@@ -11,7 +11,7 @@ chrono="0.4"
 chrono-tz="0.10"
 spake2="0.4"
 snow="0.10"
-hmac="0.12"
+hmac="0.13"
 sha2="0.10"
 base64="0.23"
 
