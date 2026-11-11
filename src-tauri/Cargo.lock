@@ -2314,10 +2314,10 @@ dependencies = [
 
 [[package]]
 name = "mascota-companero"
-version = "0.55.12"
+version = "0.55.14"
 dependencies = [
  "arboard",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "chrono-tz",
  "clipboard-win",

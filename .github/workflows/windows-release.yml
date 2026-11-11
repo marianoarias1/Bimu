@@ -16,7 +16,30 @@ concurrency:
   group: windows-release
   cancel-in-progress: true
 jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.version.outputs.needed }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check whether this version needs publication
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(jq -er '.version | strings | select(length > 0)' package.json)"
+          releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')"
+          if grep -Fxq -- "v$version" <<< "$releases"; then
+            echo "Version v$version is already published; no new release is needed."
+            echo 'needed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'needed=true' >> "$GITHUB_OUTPUT"
+          fi
   security:
+    needs: release
+    if: needs.release.outputs.needed == 'true'
     uses: ./.github/workflows/security.yml
     permissions:
       contents: read
