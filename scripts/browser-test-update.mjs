@@ -53,12 +53,29 @@ export function isNativeTestUpdate(files) {
     && files.every(file => nativeAllowed.has(file))
 }
 
+const workflowFiles = new Set([
+  '.github/workflows/verify-pull-request.yml',
+  '.github/workflows/windows-release.yml',
+  '.github/workflows/security.yml',
+  '.github/workflows/msix-experimental.yml',
+  '.github/workflows/website.yml',
+])
+const workflowHelpers = new Set([
+  'scripts/browser-test-update.mjs',
+  'tests/browser-test-update.test.mjs',
+])
+
+export function isWorkflowOnlyUpdate(files) {
+  return files.some(file => workflowFiles.has(file))
+    && files.every(file => workflowFiles.has(file) || workflowHelpers.has(file))
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const base = process.argv[2]
   if (!base || !/^[\da-f]{40}$/i.test(base)) throw new Error('Expected the pull request base commit SHA')
   const git = (...args) => execFileSync('git', args, {encoding:'utf8'})
   const files = git('diff','--name-only','-z',base,'HEAD','--').split('\0').filter(Boolean)
-  if (isNativeTestUpdate(files)) {
+  if (isNativeTestUpdate(files) || isWorkflowOnlyUpdate(files)) {
     console.log(true)
   } else if (!files.includes('package.json') || !files.includes('package-lock.json') || files.some(file => !allowed.has(file))) {
     console.log(false)
