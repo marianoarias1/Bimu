@@ -1,7 +1,7 @@
 //! Cross-version regression: new HMAC/SHA-256 must preserve the deployed protocol.
 use bimu_native_core_tests::pairing_core as current;
 use hmac::{Hmac, KeyInit, Mac};
-use sha2::{Digest, Sha256};
+use sha2_hmac::{Digest, Sha256};
 
 #[path = "fixtures/pairing_core_0_55_15.rs"]
 mod legacy;
@@ -26,15 +26,15 @@ fn hmac_sha256_preserves_published_vectors() {
 
 #[test]
 fn sha256_preserves_streamed_hashes_and_noise_key_derivation() {
-    use sha2_legacy::Digest as LegacyDigest;
+    use sha2::Digest as LegacyDigest;
     for data in [vec![], b"abc".to_vec(), vec![0x5a; 65_537]] {
         let mut streamed = Sha256::new();
         for chunk in data.chunks(257) { streamed.update(chunk); }
-        assert_eq!(streamed.finalize().as_slice(), sha2_legacy::Sha256::digest(&data).as_slice());
+        assert_eq!(streamed.finalize().as_slice(), sha2::Sha256::digest(&data).as_slice());
     }
     assert_eq!(hex(&Sha256::digest(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     let mut new_psk = Sha256::new();
-    let mut old_psk = sha2_legacy::Sha256::new();
+    let mut old_psk = sha2::Sha256::new();
     for bytes in [b"bimu-noise-psk-v1\0".as_slice(), &[0x5a; 32]] {
         new_psk.update(bytes);
         old_psk.update(bytes);

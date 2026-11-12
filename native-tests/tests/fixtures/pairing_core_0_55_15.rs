@@ -3,7 +3,7 @@
 //! PAKE pairing primitive. This module does not open sockets or synchronize data.
 //! A caller must enforce expiry, attempt limits, consent, and channel binding.
 use hmac_legacy::{Hmac, Mac};
-use sha2_legacy::Sha256;
+use sha2::Sha256;
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 
 const CLIENT_ID: &[u8] = b"bimu-pairing-client-v1";
