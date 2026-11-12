@@ -32,11 +32,11 @@ jobs:
     if: needs.changes.outputs.app == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -49,7 +49,7 @@ jobs:
         run: |
           $testOnly = node scripts/browser-test-update.mjs $env:PR_BASE
           if ($LASTEXITCODE -ne 0) { throw 'Could not classify the dependency changes.' }
-          if ($testOnly -ceq 'true') { Write-Host 'Test dependency only: build the verification installer without a new release version.'; exit 0 }
+          if ($testOnly -ceq 'true') { Write-Host 'Verification-only changes: build the test installer without a new release version.'; exit 0 }
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $tags = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name'
           if ($LASTEXITCODE -ne 0) { throw 'Could not check existing releases.' }
@@ -68,7 +68,7 @@ jobs:
         run: npm run test:browser
       - name: Preserve reveal screenshots
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: Bimu-notch-reveal-screenshots
           path: test-results/notch-reveal/*.png
@@ -84,7 +84,7 @@ jobs:
           if ($exe.VersionInfo.CompanyName -cne 'Bimu') { throw "Unexpected executable publisher: $($exe.VersionInfo.CompanyName)" }
       - run: git diff --exit-code -- src-tauri/Cargo.lock native-tests/Cargo.lock
       - name: Preserve verification installer
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Bimu-verificacion-no-publicar
           path: src-tauri/target/release/bundle/nsis/*-setup.exe
