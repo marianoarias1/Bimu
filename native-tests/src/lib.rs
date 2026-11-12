@@ -21,3 +21,5 @@
 #[path="../../src-tauri/src/application_icon_pixels.rs"]pub mod application_icon_pixels;
 
 #[path="../../src-tauri/src/bounded_io.rs"]pub mod bounded_io;
+
+#[path="../../src-tauri/src/random_core.rs"]pub mod random_core;

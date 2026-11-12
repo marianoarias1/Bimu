@@ -76,10 +76,9 @@ fn insert(data:&mut Data,content:Content,origin:String,shareable:bool){
   ClipboardPayload::Text(text)=>{if text.is_empty()||text.len()>1024*1024{return Err("Texto recibido fuera de los límites".into())}{let mut clip=arboard::Clipboard::new().map_err(|_|"No se pudo abrir el portapapeles")?;clip.set_text(text.clone()).map_err(|_|"No se pudo actualizar el portapapeles")?;}Content::Text(text)},
   ClipboardPayload::Image{width,height,rgba}=>{if width==0||height==0||width>16384||height>16384||rgba.len()>MAX_IMAGE_BYTES||width.checked_mul(height).and_then(|n|n.checked_mul(4))!=Some(rgba.len()){return Err("Imagen recibida inválida".into())}let preview=preview_image(width,height,&rgba).ok_or("No se pudo preparar la imagen")?;{let mut clip=arboard::Clipboard::new().map_err(|_|"No se pudo abrir el portapapeles")?;clip.set_image(arboard::ImageData{width,height,bytes:rgba.clone().into()}).map_err(|_|"No se pudo actualizar la imagen")?;}Content::Image{width,height,rgba,preview}},
   ClipboardPayload::FileBundle(bundle)=>{
-   use rand::{rngs::OsRng,RngCore};
    let root=app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?.join("archivos-recibidos");
    std::fs::create_dir_all(&root).map_err(|_|"No se pudo crear la carpeta de archivos recibidos")?;
-   let destination=root.join(format!("{:016x}",OsRng.next_u64()));
+   let destination=root.join(format!("{:016x}",crate::random_core::token()?));
    let paths=crate::clipboard_files::unpack_with_limit(&bundle,&destination,file_limit)?;
    if crate::clipboard_files_windows::replace(app,&paths).is_err(){let _=std::fs::remove_dir_all(&destination);return Err("No se pudieron copiar los archivos recibidos".into())}
    Content::Files(paths)

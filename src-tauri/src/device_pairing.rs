@@ -2,7 +2,6 @@
 use crate::pairing_core::Role;
 use crate::pairing_transport::{self, SecureChannel};
 use crate::clipboard_protocol::{self, ClipboardPayload};
-use rand::{rngs::OsRng, Rng, RngCore};
 use crate::shelf_shared::ShelfMetadata;
 use std::collections::{HashSet,VecDeque};
 use tauri_plugin_opener::OpenerExt;
@@ -110,7 +109,7 @@ pub(crate) fn request_remote_shelf(app:&AppHandle,id:&str)->Result<(),String>{
  if inner.shelf_pending.is_some(){return Err("Ya hay un archivo en descarga".into())}
  let item=inner.remote_shelf.iter().find(|item|item.id==id).ok_or("El archivo ya no está en la otra bandeja")?;
  if !item.available{return Err("El archivo ya no está disponible en la otra PC".into())}
- let name=item.name.clone();let token=OsRng.next_u64();
+ let name=item.name.clone();let token=crate::random_core::token()?;
  inner.shelf_pending=Some(ShelfPending{id:id.into(),token,name,started:Instant::now()});
  inner.shelf_messages.push_back(ClipboardPayload::ShelfRequest{id:id.into(),token});drop(inner);
  let _=app.emit("shelf-changed",());Ok(())
@@ -141,7 +140,7 @@ fn handle_shelf_reply(app:&AppHandle,shared:&DevicePairing,generation:u64,id:Str
   if shared.0.lock().map(|i|i.generation!=generation||i.status.phase!="connected").unwrap_or(true){return Err("La otra PC se desconectó".into())}
   let root=app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?.join("archivos-a-mano-recibidos");
   std::fs::create_dir_all(&root).map_err(|_|"No se pudo crear la carpeta de recepción")?;
-  let destination=root.join(format!("{:016x}",OsRng.next_u64()));
+  let destination=root.join(format!("{:016x}",crate::random_core::token()?));
   let paths=crate::clipboard_files::unpack_with_limit(&bundle,&destination,receive_bytes(shared))?;
   if shared.0.lock().map(|i|i.generation!=generation||i.status.phase!="connected").unwrap_or(true){let _=std::fs::remove_dir_all(&destination);return Err("La otra PC se desconectó".into())}
   let path=paths.first().ok_or("No se recibió el archivo solicitado")?;
@@ -245,7 +244,7 @@ pub fn device_pairing_host(app:AppHandle,state:State<'_,DevicePairing>)->Result<
  let listener=TcpListener::bind("0.0.0.0:0").map_err(|_|"No se pudo abrir la conexión local")?;
  listener.set_nonblocking(true).map_err(|_|"No se pudo iniciar la conexión")?;
  let port=listener.local_addr().map_err(|_|"No se pudo obtener el puerto")?.port();
- let code=format!("{:06}",OsRng.gen_range(0..1_000_000u32));
+ let code=crate::random_core::pairing_code()?;
  let shared=state.inner().clone();
  let (generation,status)={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;reset(&mut inner);inner.status=PairStatus{phase:"waiting".into(),code:Some(code.clone()),address:Some(SocketAddrV4::new(ip,port).to_string()),code_expires_at:Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()+120),..Default::default()};(inner.generation,inner.status.clone())};
  let _=app.emit("shelf-changed",());
