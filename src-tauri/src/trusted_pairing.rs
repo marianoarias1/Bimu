@@ -4,7 +4,6 @@ use sha2::{Digest,Sha256};
 use tauri::{AppHandle,Manager};
 use crate::pairing_core::Role;
 use crate::pairing_transport::SecureChannel;
-use rand::{rngs::OsRng,RngCore};
 
 #[derive(Clone,Serialize,Deserialize)]
 pub struct Trust { pub key:[u8;32], pub host:bool }
@@ -31,7 +30,7 @@ pub fn forget(app:&AppHandle)->Result<(),String>{match std::fs::remove_file(path
 pub fn establish(channel:&mut SecureChannel,role:Role,store:impl Fn(&Trust)->Result<(),String>,rollback:impl Fn(&Trust))->Result<(),String>{
  match role {
   Role::Host=>{
-   let mut key=[0u8;32];OsRng.fill_bytes(&mut key);channel.send(&key)?;
+   let key=crate::random_core::key()?;channel.send(&key)?;
    if channel.receive()?.as_slice()!=b"stored"{return Err("No se pudo guardar la vinculación en la otra PC".into())}
    let trust=Trust{key,host:true};store(&trust)?;
    if let Err(error)=channel.send(b"stored"){rollback(&trust);return Err(error)}

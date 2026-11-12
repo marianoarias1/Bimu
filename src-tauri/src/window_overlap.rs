@@ -52,7 +52,7 @@ mod windows_impl {
         let mut ctx=Context{target,window:0,pid:0,own_pid:std::process::id()};EnumWindows(Some(visit),&mut ctx as *mut _ as isize);if ctx.window==0{return false}
         let kind=process_kind(ctx.pid);if kind==AppKind::Unknown{return false}
         if let Ok(focus)=automation.GetFocusedElement(){if focus.CurrentProcessId().map(|pid|pid as u32==ctx.pid||process_kind(pid as u32)==kind).unwrap_or(false){if let (Ok(control),Ok(rect),Ok(offscreen))=(focus.CurrentControlType(),focus.CurrentBoundingRectangle(),focus.CurrentIsOffscreen()){if !offscreen.as_bool()&&(control==UIA_EditControlTypeId||control==UIA_ComboBoxControlTypeId)&&target.intersects(&bounds(rect)){return true}}}}
-        if kind==AppKind::Browser {if let (Ok(root),Ok(walker))=(automation.ElementFromHandle(HWND(ctx.window as isize)),automation.ControlViewWalker()){return chrome_controls(&walker,&root,&target,0,&mut 600)}}false
+        if kind==AppKind::Browser {if let (Ok(root),Ok(walker))=(automation.ElementFromHandle(HWND(ctx.window as *mut c_void)),automation.ControlViewWalker()){return chrome_controls(&walker,&root,&target,0,&mut 600)}}false
     }
     type Request=(ScreenRect,SyncSender<bool>);
     static WORKER:OnceLock<SyncSender<Request>>=OnceLock::new();

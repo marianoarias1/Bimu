@@ -11,6 +11,7 @@ mod shelf_shared;
 mod clipboard_files;
 #[cfg(windows)]mod clipboard_files_windows;
 mod pairing_core;
+mod random_core;
 mod pairing_transport;
 mod device_pairing;
 mod transfer_limits;
