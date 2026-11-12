@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from
 import { isTauri, invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalSize, PhysicalPosition, currentMonitor, cursorPosition } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
-import { Home, MessageCircle, PanelsTopLeft, Settings2, Settings, Grip, ArrowDownLeft, ArrowUpRight, Minus, Sun, Moon, Monitor, Hand, Sparkles, Plug, Github, Globe, Cpu, ArrowRight, Send, Check, Palette, Pin, Crosshair, Power, X, FolderOpen, LoaderCircle, Music2, SkipBack, SkipForward, Play, Pause, ChevronLeft, ChevronRight, Wifi, WifiOff, Zap, File, Trash2, Upload, Image, Film, FileText, Captions, ArrowUp, ArrowUpToLine } from 'lucide-react'
+import { Home, MessageCircle, PanelsTopLeft, Settings2, Settings, Grip, ArrowDownLeft, ArrowUpRight, Minus, Sun, Moon, Monitor, Hand, Sparkles, Plug, Globe, Cpu, ArrowRight, Send, Check, Palette, Pin, Crosshair, Power, X, FolderOpen, LoaderCircle, Music2, SkipBack, SkipForward, Play, Pause, ChevronLeft, ChevronRight, Wifi, WifiOff, Zap, File, Trash2, Upload, Image, Film, FileText, Captions, ArrowUp, ArrowUpToLine } from 'lucide-react'
 import './desktop.css'
 import {SettingsPanels} from './SettingsPanels'
 import {readOpacity} from './ui-preferences'
