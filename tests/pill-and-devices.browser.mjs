@@ -86,7 +86,10 @@ try{
      assert.ok(Math.abs(moved.x-x)<2&&Math.abs(moved.y-y)<2,'compact surface follows the cursor and reaches every screen edge')
     }
     assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length),sizeCalls,'movement must not resize the native frame')
-    await page.mouse.up();await page.waitForTimeout(450)
+    await page.mouse.up();await page.waitForFunction(()=>document.documentElement.dataset.notch==='peek')
+    // The fixture moves a mock HWND, not the browser window. Reproject the
+    // browser pointer onto the restored surface as a real native move does.
+    await page.locator('.desktop').hover();await page.waitForTimeout(450)
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.notch),'peek','release restores the expanded player')
     const point=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('companion-dock'));return d.pillPositions[d.monitorId]});assert.ok(Math.abs(point.x-1000/1440)<.01);assert.ok(Math.abs(point.y-450/860)<.01)
     await page.mouse.move(1,1);await page.waitForFunction(()=>document.documentElement.dataset.notch==='idle');await page.waitForTimeout(350)
