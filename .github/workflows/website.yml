@@ -29,18 +29,26 @@ jobs:
           root = Path('docs').resolve()
           class Links(HTMLParser):
               def handle_starttag(self, tag, attrs):
+                  if tag == 'base':
+                      href = dict(attrs).get('href', '')
+                      url = urlsplit(href)
+                      assert not url.scheme and not url.netloc, 'Only local base URLs are supported'
+                      self.base = (self.page.parent / unquote(url.path)).resolve()
+                      assert self.base.is_relative_to(root), 'Base URL must stay within docs'
+                      return
                   for key, value in attrs:
                       if key not in ('href', 'src') or not value:
                           continue
                       url = urlsplit(value)
                       if url.scheme or url.netloc or not url.path:
                           continue
-                      target = (self.page.parent / unquote(url.path)).resolve()
+                      target = (self.base / unquote(url.path)).resolve()
                       assert target.is_relative_to(root) and target.exists(), f'{self.page}: missing {value}'
 
           for page in root.rglob('*.html'):
               parser = Links()
               parser.page = page
+              parser.base = page.parent
               parser.feed(page.read_text())
           print('Website links and assets OK')
 
