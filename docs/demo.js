@@ -12,6 +12,7 @@ const reduced=matchMedia('(prefers-reduced-motion: reduce)')
 let page=view==='weather'?'weather':view==='clipboard'?'clipboard':'music'
 let open=view==='hero'||view==='weather'||view==='clipboard'
 let lyrics=view==='hero', playing=true, motion=!reduced.matches, visible=true, dragging=null
+let volumePanel=null, seeking=false
 let position=58, duration=247, volume=65, historyPaused=false, city=0, feedbackTimer, hoverTimer
 let anchor={x:.5,y:pill?0.48:0}, scale=1, width=150, height=27
 let history=[
@@ -22,13 +23,13 @@ let history=[
 root.dataset.demo=view;root.dataset.scene=String(scene);root.dataset.mode=pill?'pill':'notch';root.dataset.centered='true'
 
 const paths={
- wifi:'<path d="M2 8.5a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8.5 15.5a5.5 5.5 0 0 1 7 0"/><path d="M12 19h.01"/>',
- settings:'<path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-1 1-3 3-1 1-3-2-2-3 1-2-3Z"/><circle cx="12" cy="11" r="3"/>',
- captions:'<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M6 10h4m4 0h4M6 14h3m4 0h5"/>',
- grip:'<circle cx="9" cy="5" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="19" r="1"/>',
- up:'<path d="m6 9 6-6 6 6M12 3v18"/>',
- left:'<path d="m14 6-6 6 6 6"/>',right:'<path d="m10 6 6 6-6 6"/>',
- volume:'<path d="m11 4-6 5H2v6h3l6 5ZM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
+ wifi:'<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/>',
+ settings:'<circle cx="12" cy="12" r="3"/>',
+ captions:'<rect width="18" height="14" x="3" y="5" rx="2" ry="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/>',
+ grip:'<circle cx="12" cy="5" r="1"/><circle cx="19" cy="5" r="1"/><circle cx="5" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="12" cy="19" r="1"/><circle cx="19" cy="19" r="1"/><circle cx="5" cy="19" r="1"/>',
+ up:'<path d="M5 3h14"/><path d="m18 13-6-6-6 6"/><path d="M12 7v14"/>',
+ left:'<path d="m15 18-6-6 6-6"/>',
+ volume:'<path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>',
  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/>',
  cloud:'<path d="M6 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11-2 5 5 0 0 0-1 10Z"/>',
  pin:'<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2"/>',
@@ -38,7 +39,7 @@ const paths={
  file:'<path d="M14 2H6v20h12V6ZM14 2v5h5"/>',
  check:'<path d="m5 12 4 4L19 6"/>'
 }
-function icon(name,size=15) {return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.file)+'</svg>'}
+function icon(name,size=15) {return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.file)+'</svg>'}
 function glyph(kind,size=17) {
  const shape=kind==='pause'?'<rect x="5.5" y="4" width="4.5" height="16" rx="2"/><rect x="14" y="4" width="4.5" height="16" rx="2"/>':kind==='play'?'<path d="M7.8 4.6c-.9-.5-2 .1-2 1.2v12.4c0 1.1 1.1 1.6 2 1.2l10-6.2c.9-.6.9-1.8 0-2.4z"/>':kind==='previous'?'<rect x="4" y="5" width="3" height="14" rx="1.5"/><path d="M18 5.2c.9-.5 2 .1 2 1.1v11.4c0 1-1.1 1.6-2 1.1l-8-5.7c-.8-.5-.8-1.7 0-2.2z"/>':'<rect x="17" y="5" width="3" height="14" rx="1.5"/><path d="M6 5.2c-.9-.5-2 .1-2 1.1v11.4c0 1 1.1 1.6 2 1.1l8-5.7c.8-.5.8-1.7 0-2.2z"/>'
  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+shape+'</svg>'
@@ -47,12 +48,17 @@ if(scene)document.querySelector('.windows-scene').innerHTML=pill?'<div class="wi
 
 desktop.innerHTML='<button type="button" class="notch-surface" aria-label="Desplegar Bimu" aria-expanded="'+open+'"><span class="notch-face" aria-hidden="true"><span class="notch-avatar-slot bimu-eyes bimu-listening"><i></i><i></i></span></span><span class="notch-copy"><strong>Tu compañero</strong><small>Acá, con vos</small></span><time class="notch-clock"></time><span class="system-status" aria-label="Conexión Wi-Fi">'+icon('wifi',15)+'</span><span class="notch-indicator"><span class="status-dot"></span></span><span class="notch-grip">'+icon('grip',12)+'</span></button><section class="notch-player" aria-label="Herramientas de Bimu"><div class="notch-player-content"><div class="player-heading"><button type="button" class="notch-move-button" aria-label="'+(pill?'Arrastrar pill':'Puntos de movimiento de Bimu')+'" title="'+(pill?'Mantené presionado para mover la pill':'Movimiento disponible en modo pill')+'">'+icon('grip',15)+'</button><span class="player-date"></span><time></time></div><div class="notch-page"></div><button type="button" class="player-menu-arrow player-menu-left" aria-label="Función anterior">'+icon('left',13)+'</button><button type="button" class="player-menu-arrow player-menu-right" aria-label="Función siguiente">'+icon('right',13)+'</button><div class="notch-pagination" role="group" aria-label="Funciones"></div></div></section><button type="button" class="notch-settings-button" aria-label="Probar personalización" title="Probar personalización">'+icon('settings',15)+'</button><button type="button" class="notch-retract-button" aria-label="Reducir Bimu" title="Reducir">'+icon('up',15)+'</button>'
 const surface=desktop.querySelector('.notch-surface'), content=desktop.querySelector('.notch-page')
+const nativeContent=desktop.querySelector('.notch-player-content')
+nativeContent.append(desktop.querySelector('.notch-settings-button'))
+if(pill)desktop.querySelector('.notch-retract-button').remove()
+else nativeContent.append(desktop.querySelector('.notch-retract-button'))
 const pages=['music','weather','clipboard'], labels=['Música','Clima','Portapapeles']
 desktop.querySelector('.notch-pagination').innerHTML=pages.map((id,i)=>'<button type="button" data-page="'+id+'" aria-label="'+labels[i]+'"></button>').join('')
 function renderPage() {
  root.dataset.lyrics=String(page==='music'&&lyrics)
- content.innerHTML=page==='music'?'<div class="player-track"><span class="player-cover"><img src="assets/bad-cover.webp" alt="Portada del álbum Bad"></span><span><strong>Bad</strong><small>Michael Jackson</small></span></div><div class="player-timeline"><span class="elapsed"></span><div class="timeline-scrubber"><span class="player-progress player-wave is-playing" aria-hidden="true"><i></i></span><i class="timeline-thumb" aria-hidden="true"></i><input type="range" aria-label="Posición de reproducción simulada" min="0" max="247" step=".1" value="'+position+'"></div><span>4:07</span></div><div class="player-controls"><button type="button" class="lyrics-toggle" aria-label="Alternar letra" aria-pressed="'+lyrics+'">'+icon('captions')+'</button><button type="button" data-media="previous" aria-label="Retroceder en la demo">'+glyph('previous')+'</button><button type="button" class="player-toggle" aria-label="'+(playing?'Pausar':'Reproducir')+' la demo">'+glyph(playing?'pause':'play',19)+'</button><button type="button" data-media="next" aria-label="Avanzar en la demo">'+glyph('next')+'</button><div class="volume-control"><button type="button" class="volume-toggle" aria-label="Mostrar volumen de la demo" aria-expanded="false">'+icon('volume',17)+'</button><div class="volume-popover" hidden><strong>Volumen</strong><div class="volume-row">'+icon('volume',13)+'<input type="range" min="0" max="100" value="'+volume+'" aria-label="Volumen simulado"><span>'+volume+'%</span></div><small>Demostración sin audio</small></div></div></div>'+(lyrics?'<div class="lyrics-panel" aria-label="Letra sincronizada"><div class="demo-lyrics"><p data-line="0">You know I’m bad</p><p data-line="1">Really, really bad</p></div></div>':''):page==='weather'?weatherMarkup():clipboardMarkup()
+ content.innerHTML=page==='music'?'<div class="player-track"><span class="player-cover"><img src="assets/bad-cover.webp" alt="Portada del álbum Bad"></span><span><strong>Bad - 2012 Remaster</strong><small>Michael Jackson</small></span></div><div class="player-timeline"><span class="elapsed"></span><div class="timeline-scrubber"><span class="player-progress player-wave is-playing" aria-hidden="true"><i></i></span><i class="timeline-thumb" aria-hidden="true"></i><input type="range" aria-label="Posición de reproducción simulada" min="0" max="247" step=".1" value="'+position+'"></div><span>4:07</span></div><div class="player-controls"><button type="button" class="lyrics-toggle" aria-label="Alternar letra" aria-pressed="'+lyrics+'">'+icon('captions')+'</button><button type="button" class="player-action" data-media="previous" aria-label="Retroceder en la demo">'+glyph('previous')+'</button><button type="button" class="player-action player-toggle" aria-label="'+(playing?'Pausar':'Reproducir')+' la demo">'+glyph(playing?'pause':'play',19)+'</button><button type="button" class="player-action" data-media="next" aria-label="Avanzar en la demo">'+glyph('next')+'</button><div class="volume-control"><button type="button" class="volume-toggle" aria-label="Mostrar volumen de la demo" aria-expanded="false">'+icon('volume',17)+'</button><div class="volume-popover" hidden><strong>Volumen de Windows</strong><div class="volume-row">'+icon('volume',13)+'<input type="range" min="0" max="100" value="'+volume+'" style="--volume-fill:'+volume+'%" aria-label="Volumen simulado"><span>'+volume+'%</span></div></div></div></div>'+(lyrics?'<div class="lyrics-panel" aria-label="Letra sincronizada"><div class="demo-lyrics"><p data-line="0">You know I’m bad</p><p data-line="1">Really, really bad</p></div></div>':''):page==='weather'?weatherMarkup():clipboardMarkup()
  desktop.querySelectorAll('[data-page]').forEach(button=>button.setAttribute('aria-current',button.dataset.page===page?'page':'false'))
+ const popup=content.querySelector('.volume-popover');if(popup){volumePanel=popup;popup.remove()}
  updatePlayback()
  layout()
 }
@@ -67,7 +73,8 @@ function layout() {
  const state=open&&!dragging?'peek':'idle'
  root.dataset.notch=state;root.dataset.dragging=String(!!dragging)
  surface.setAttribute('aria-expanded',String(open&&!dragging))
- const size=pill?pillSize(state,'M',page==='music'&&lyrics?'lyrics':'home'):notchSize('top',state,'M',page==='music'&&lyrics?'lyrics':'home')
+ const tab=page==='music'&&lyrics?(content.querySelector('.volume-popover')?'lyrics-volume':'lyrics'):'home'
+ const size=pill?pillSize(state,'M',tab):notchSize('top',state,'M',tab)
  width=size[0];height=size[1]
  const maxWidth=page==='music'&&lyrics?598:483
  scale=Math.min(view==='hero'?1.15:1,(innerWidth-24)/maxWidth)
@@ -110,17 +117,25 @@ desktop.addEventListener('click',event=>{
  if(!button)return
  if(button.matches('[data-page]'))switchPage(button.dataset.page)
  if(button.matches('.player-menu-arrow'))switchPage(pages[(pages.indexOf(page)+(button.classList.contains('player-menu-left')?-1:1)+pages.length)%pages.length])
- if(button.matches('.notch-retract-button'))setOpen(false)
+ if(button.matches('.notch-retract-button')){button.blur();setOpen(false)}
  if(button.matches('.notch-settings-button'))parent.postMessage({source:'bimu-demo',command:'personalize'},location.origin)
  if(button.matches('.player-toggle')){playing=!playing;button.innerHTML=glyph(playing?'pause':'play',19);button.setAttribute('aria-label',(playing?'Pausar':'Reproducir')+' la demo');updatePlayback();animate()}
  if(button.matches('[data-media]')){position=(position+(button.dataset.media==='next'?20:-20)+duration)%duration;updatePlayback()}
  if(button.matches('.lyrics-toggle')){lyrics=!lyrics;renderPage()}
- if(button.matches('.volume-toggle')){const popup=content.querySelector('.volume-popover');popup.hidden=!popup.hidden;button.setAttribute('aria-expanded',String(!popup.hidden))}
+ if(button.matches('.volume-toggle')){const popup=content.querySelector('.volume-popover');if(popup)popup.remove();else{volumePanel.hidden=false;volumePanel.querySelector('input').value=volume;volumePanel.querySelector('input').style.setProperty('--volume-fill',volume+'%');button.parentElement.append(volumePanel)}button.setAttribute('aria-expanded',String(!popup));layout()}
  if(button.matches('[data-weather],.weather-refresh')){city=1-city;renderPage();notice('Pronóstico de demostración')}
  if(button.matches('[data-history]')){if(button.dataset.history==='clear')history=[];else historyPaused=!historyPaused;renderPage()}
  if(button.matches('[data-copy]')){button.querySelector('small').textContent='Copiado';notice('Elemento seleccionado en la demo')}
  if(button.matches('[data-delete]')){history=history.filter(item=>item.id!==Number(button.dataset.delete));renderPage()}
 })
+
+// Match the native timeline: freeze playback while scrubbing and render wave/thumb together.
+function seekPointer(event){const input=event.target;if(!input.matches('.timeline-scrubber input'))return;const r=input.getBoundingClientRect();position=Math.max(0,Math.min(duration,(event.clientX-r.left)/r.width*duration));updatePlayback()}
+desktop.addEventListener('pointerdown',event=>{if(!event.target.matches('.timeline-scrubber input')||event.button!==0)return;event.preventDefault();seeking=true;event.target.focus({preventScroll:true});event.target.setPointerCapture(event.pointerId);event.target.parentElement.classList.add('is-scrubbing');seekPointer(event)})
+desktop.addEventListener('pointermove',event=>{if(seeking)seekPointer(event)})
+function endSeek(event){if(!seeking)return;if(event.type==='pointerup')seekPointer(event);seeking=false;content.querySelector('.timeline-scrubber')?.classList.remove('is-scrubbing');progressAt=performance.now()}
+desktop.addEventListener('pointerup',endSeek);desktop.addEventListener('pointercancel',endSeek)
+
 desktop.addEventListener('input',event=>{
  if(event.target.matches('.timeline-scrubber input')){position=Number(event.target.value);updatePlayback()}
  if(event.target.matches('.volume-row input')){volume=Number(event.target.value);event.target.parentElement.querySelector('span').textContent=volume+'%';event.target.style.setProperty('--volume-fill',volume+'%')}
@@ -168,7 +183,7 @@ function tick(now) {
   const dt=last?Math.min(100,now-last):0;last=now;lastDraw=now
   cycle+=dt/Math.max(4200,Math.min(10000,(contour?.length||300)/65*1000))
   draw(pill?cycle%1:cometHead(cycle,1))
-  if(now-progressAt>250){position=(position+dt/1000+Math.max(0,(now-progressAt-dt))/1000)%duration;progressAt=now;updatePlayback()}
+  if(!seeking&&now-progressAt>250){position=(position+dt/1000+Math.max(0,(now-progressAt-dt))/1000)%duration;progressAt=now;updatePlayback()}
  }
  frame=requestAnimationFrame(tick)
 }

@@ -28,3 +28,6 @@ Node syntax checks cover the website scripts; local link/asset checks validate e
 The ZIP's generated React/DC runtime is unnecessary: the published page uses browser-native HTML/CSS/JS with no build step and keeps existing GitHub Pages hosting.
 
 Local checks passed: JavaScript syntax, HTML/CSS assets, privacy links, exact UI/geometry snapshot equality, and DOM execution/interactions in all five demo views (including rejection of cross-origin color messages). Local Chromium could not start: its process-singleton socket is denied by the execution environment. Visual screenshots, responsive layout and real pointer/keyboard interaction remain pending in the website Action. No CI polling or waiting is performed; the user will confirm completion before follow-up review.
+
+## Correcciones de fidelidad
+Los controles del encabezado se ubican dentro del panel nativo; Pill no incluye flecha de solapa. Los SVG corresponden a Lucide Grip/Settings/ArrowUpToLine de la app. Volumen inicializado y montado únicamente al abrir, con geometría lyrics-volume de 206 px. El arrastre del reproductor usa captura del puntero, suspende el avance y activa is-scrubbing para que onda y bolita avancen juntas. El encabezado web incluye los hombros cóncavos del notch. Pasaron regresiones DOM de las cinco vistas; la comprobación visual queda pendiente en Actions.
