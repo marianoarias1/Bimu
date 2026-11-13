@@ -153,11 +153,12 @@ fn handle_shelf_reply(app:&AppHandle,shared:&DevicePairing,generation:u64,id:Str
  let _=app.emit("shelf-changed",());if let Err(error)=result{let _=app.emit("shelf-error",error);}
 }
 fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:ClipboardPayload,peer:&str)->Result<(),String>{
+ if !matches!(&payload,ClipboardPayload::ConnectionControl{..})&&shared.0.lock().map(|i|i.generation!=generation||i.status.phase!="connected").unwrap_or(true){return Ok(())}
  match payload{
   ClipboardPayload::ConnectionControl{action}=>{
    let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;if inner.generation!=generation||!inner.management{return Err("Control de conexión no habilitado".into())}
-   if action=="disconnect"{crate::trusted_pairing::edit(app,|b|{b.automatic=false;if let Some(d)=b.devices.iter_mut().find(|d|Some(&d.id)==inner.active_id.as_ref()){d.paused=true;d.pause_pending=false}Ok(())})?;inner.control=Some("disconnected".into());inner.close_after_send=true;inner.outgoing=None;}
-   else{crate::trusted_pairing::edit(app,|b|{if let Some(d)=b.devices.iter_mut().find(|d|Some(&d.id)==inner.active_id.as_ref()){d.paused=true;d.pause_pending=false}Ok(())})?;reset(&mut inner);}Ok(())
+   if action=="disconnect"{crate::trusted_pairing::edit(app,|b|{b.automatic=false;if let Some(d)=b.devices.iter_mut().find(|d|Some(&d.id)==inner.active_id.as_ref()){d.paused=true;d.pause_pending=false}Ok(())})?;inner.control=Some("disconnected".into());inner.close_after_send=true;inner.outgoing=None;inner.status.phase="disconnecting".into();}
+   else{crate::trusted_pairing::edit(app,|b|{if let Some(d)=b.devices.iter_mut().find(|d|Some(&d.id)==inner.active_id.as_ref()){d.paused=true;d.pause_pending=false}Ok(())})?;inner.close_after_send=true;inner.outgoing=None;inner.status.phase="disconnecting".into();}Ok(())
   },
   ClipboardPayload::PreviewRequest{id,token}=>{
    {let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;if inner.generation!=generation||!inner.management{return Err("Vista previa no habilitada".into())}if inner.serving_previews.len()>=8||!inner.serving_previews.insert((id.clone(),token)){return Ok(())}}
@@ -172,7 +173,7 @@ fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:C
   },
   ClipboardPayload::ShelfCatalog(items)=>{
    crate::shelf_shared::validate(&items)?;
-   let mut changed=false;if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation&&inner.remote_shelf!=items{let changed:Vec<String>=inner.remote_shelf.iter().filter(|old|!items.iter().any(|new|new.id==old.id&&new.revision==old.revision)).map(|old|old.id.clone()).collect();for id in changed{inner.previews.remove(&id);inner.pending_previews.remove(&id);}inner.hidden_shelf.retain(|id|items.iter().any(|item|&item.id==id));inner.remote_shelf=items;changed=true}}
+   let mut changed=false;if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation&&inner.remote_shelf!=items{let invalidated:Vec<String>=inner.remote_shelf.iter().filter(|old|!items.iter().any(|new|new.id==old.id&&new.revision==old.revision)).map(|old|old.id.clone()).collect();for id in invalidated{inner.previews.remove(&id);inner.pending_previews.remove(&id);}inner.hidden_shelf.retain(|id|items.iter().any(|item|&item.id==id));inner.remote_shelf=items;changed=true}}
    if changed{let _=app.emit("shelf-changed",());}Ok(())
   },
   ClipboardPayload::ShelfRequest{id,token}=>{handle_shelf_request(app,shared,generation,id,token);Ok(())},
@@ -181,7 +182,7 @@ fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:C
  }
 }
 fn next_shelf_or_clipboard(app:&AppHandle,shared:&DevicePairing,generation:u64,last:&mut Option<Vec<ShelfMetadata>>,last_check:&mut Instant)->Result<Option<ClipboardPayload>,String>{
- {let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;if inner.generation!=generation{return Ok(None)}if let Some(action)=inner.control.take(){return Ok(Some(ClipboardPayload::ConnectionControl{action}))}}
+ {let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;if inner.generation!=generation{return Ok(None)}if let Some(action)=inner.control.take(){return Ok(Some(ClipboardPayload::ConnectionControl{action}))}if inner.close_after_send{return Ok(None)}}
 
  if let Ok(mut inner)=shared.0.lock(){if inner.generation!=generation{return Ok(None)}if inner.limit_dirty{inner.limit_dirty=false;return Ok(Some(ClipboardPayload::Limits{mb:crate::transfer_limits::current_mb(),configured:crate::transfer_limits::configured()}))}if let Some(message)=inner.shelf_messages.pop_front(){return Ok(Some(message))}}
  // Catalog publication is independent of the file-size limit and takes a
