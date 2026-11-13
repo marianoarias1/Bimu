@@ -29,17 +29,43 @@ jobs:
           root = Path('docs').resolve()
           class Links(HTMLParser):
               def handle_starttag(self, tag, attrs):
+                  if tag == 'base':
+                      href = dict(attrs).get('href', '')
+                      url = urlsplit(href)
+                      assert not url.scheme and not url.netloc, 'Only local base URLs are supported'
+                      self.base = (self.page.parent / unquote(url.path)).resolve()
+                      assert self.base.is_relative_to(root), 'Base URL must stay within docs'
+                      return
                   for key, value in attrs:
                       if key not in ('href', 'src') or not value:
                           continue
                       url = urlsplit(value)
                       if url.scheme or url.netloc or not url.path:
                           continue
-                      target = (self.page.parent / unquote(url.path)).resolve()
+                      target = (self.base / unquote(url.path)).resolve()
                       assert target.is_relative_to(root) and target.exists(), f'{self.page}: missing {value}'
 
           for page in root.rglob('*.html'):
               parser = Links()
               parser.page = page
+              parser.base = page.parent
               parser.feed(page.read_text())
           print('Website links and assets OK')
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install browser test dependency
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Check responsive layout and live Bimu demos
+        run: node docs/tests/browser.mjs
+      - name: Preserve website screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: Bimu-website-screenshots
+          path: test-results/website/*.png
+          if-no-files-found: ignore
