@@ -94,8 +94,10 @@ export function DevicePairingSettings(){
    {!device.pendingForget&&<button disabled={busy||!native} onClick={()=>device.connected?run('device_pairing_disconnect'):connectKnown(device.id)}>{device.connected?'Desconectar':'Conectar'}</button>}
    {!device.pendingForget&&<details className="pair-device-menu"><summary aria-label={'Opciones de '+device.name}><MoreHorizontal size={17}/></summary><button className="pair-danger pair-forget-action" disabled={busy} onClick={e=>{e.currentTarget.closest('details').open=false;setConfirmForget(device)}}><Unlink size={14}/>Olvidar equipo</button></details>}
   </article>)}</div>
-  <button className="pair-primary" disabled={!native||busy} onClick={addKnown}>+ Vincular otra PC</button>
-  <small className="pair-helper">Tu favorito tiene prioridad al reconectar. Solo se sincroniza con el equipo conectado.</small>
+  <div className="pair-add-device">
+   <button className="pair-primary" disabled={!native||busy} onClick={addKnown}>+ Vincular otra PC</button>
+   <small className="pair-helper">Tu favorito tiene prioridad al reconectar. Solo se sincroniza con el equipo conectado.</small>
+  </div>
   {connected&&<div className="pair-sync-row"><span>Sincronización activa</span><span aria-label="Portapapeles y archivos"><Clipboard size={16}/><Files size={16}/></span></div>}
   {transferSettings}
  </>

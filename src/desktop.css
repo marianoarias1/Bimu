@@ -670,6 +670,8 @@ html[data-theme=light] .desktop .pairing-flow{color-scheme:light}
 .desktop .pairing-flow button.pair-primary:hover:not(:disabled){background:color-mix(in srgb,var(--bimu-swatch,#a78bfa) 34%,var(--control-hover))}
 .pair-heading,.pair-stage-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .desktop .pairing-flow .pair-helper{margin:5px 0 12px}
+.pair-add-device{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:12px}
+.desktop .pairing-flow .pair-add-device .pair-helper{margin:0}
 .pair-choice{display:grid;grid-template-columns:28px minmax(0,1fr);align-items:start;gap:12px;padding:12px;border:1px solid var(--control-border);border-radius:12px;background:color-mix(in srgb,var(--control-surface) 45%,transparent);margin-top:8px}
 .pair-choice>svg{margin-top:4px}
 .desktop .pairing-flow .pair-choice p{margin:4px 0 9px}
