@@ -26,6 +26,11 @@ try{
  browser=await chromium.connectOverCDP(endpoint)
  for(let i=0;i<100;i++){page=browser.contexts().flatMap(context=>context.pages()).find(page=>!page.url().startsWith('devtools:'));if(page)break;await new Promise(r=>setTimeout(r,100))}
  assert.ok(page,'native WebView2 page');page.setDefaultTimeout(15000)
+ // Keep foreground CI consoles from activating the unrelated auto-hide option.
+ await page.waitForFunction(()=>document.querySelector('.desktop'))
+ await page.evaluate(()=>localStorage.setItem('bimu-avoid-overlap','false'));await page.reload()
+ // Hosted desktops can start with the physical cursor already over Bimu.
+ await nativePointer('move',{x:0,y:0});await page.mouse.move(1,1)
  await page.waitForFunction(()=>document.documentElement.dataset.notch==='idle')
  for(const mode of ['notch','pill']){
   if(mode==='pill'){
@@ -65,5 +70,5 @@ try{
   await page.mouse.move(1,1);await page.waitForFunction(()=>document.documentElement.dataset.notch==='idle')
   console.log('PASS actual Windows/WebView2',mode)
  }
-}catch(error){if(page)await page.screenshot({path:'test-results/native-windows/failure.png'}).catch(()=>{});throw error}
+}catch(error){if(page){console.log('Native failure state:',await page.evaluate(()=>({state:{...document.documentElement.dataset},text:document.body.innerText})).catch(()=>null));await page.screenshot({path:'test-results/native-windows/failure.png'}).catch(()=>{})}throw error}
 finally{if(pointerHeld)await nativePointer('up').catch(()=>{});await browser?.close()}
