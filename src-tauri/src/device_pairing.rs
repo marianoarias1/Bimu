@@ -165,7 +165,7 @@ fn handle_incoming(app:&AppHandle,shared:&DevicePairing,generation:u64,payload:C
    let path=crate::shelf::path_for_share(app,&id).ok();let shared=shared.clone();
    tauri::async_runtime::spawn(async move{let preview=match path{Some(p)=>crate::file_thumbnails::prepare(p).await,None=>None};if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation{inner.serving_previews.remove(&(id.clone(),token));if inner.shelf_messages.len()<24{inner.shelf_messages.push_back(ClipboardPayload::PreviewReply{id,token,preview});}}}});Ok(())
   },
-  ClipboardPayload::PreviewReply{id,token,preview}=>{let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;if inner.generation==generation&&inner.management&&inner.pending_previews.get(&id).map(|(value,_)|*value)==Some(token){inner.pending_previews.remove(&id);inner.previews.insert(id,preview);drop(inner);let _=app.emit("file-preview-ready",());}Ok(())},
+  ClipboardPayload::PreviewReply{id,token,preview}=>{let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;if inner.generation==generation&&inner.management&&inner.pending_previews.get(&id).map(|(value,_)|*value)==Some(token){inner.pending_previews.remove(&id);let ready=preview.is_some();if ready{inner.previews.insert(id,preview);}drop(inner);if ready{let _=app.emit("file-preview-ready",());}}Ok(())},
   ClipboardPayload::Limits{mb,configured}=>{
    crate::transfer_limits::validate(mb)?;
    if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation{inner.peer_limit_mb=Some(mb);inner.peer_limit_configured=configured;inner.outgoing=None;inner.outgoing_revision=inner.outgoing_revision.wrapping_add(1);inner.preparing=false;inner.shelf_messages.retain(|m|!matches!(m,ClipboardPayload::ShelfReply{..}));}}

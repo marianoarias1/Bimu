@@ -49,6 +49,7 @@ export function DevicePairingSettings(){
  useEffect(()=>{if(!editing&&status.transferLimitMb)setLimit(String(status.transferLimitMb))},[status.transferLimitMb,editing])
  useEffect(()=>{setConfirmForget(false);setEditing(false);setCopied(false);titleRef.current?.focus()},[view])
  useEffect(()=>{if(status.phase==='connected'){setAdding(false);setRoute('start')}},[status.phase])
+ useEffect(()=>{const close=e=>{for(const menu of document.querySelectorAll('.pair-device-menu[open]'))if(e.type==='keydown'?e.key==='Escape':!menu.contains(e.target)){menu.open=false;if(e.type==='keydown')menu.querySelector('summary')?.focus()}};document.addEventListener('pointerdown',close);document.addEventListener('keydown',close);return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',close)}},[])
  useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(false),2000);return()=>clearTimeout(timer)},[copied])
  const run=async(command,args={})=>{
   if(!native||operation.current)return false
@@ -91,7 +92,7 @@ export function DevicePairingSettings(){
    <Monitor size={23}/><div className="pair-saved-name"><strong>{device.name}</strong><small>{device.pendingForget?'Vínculo revocado · aviso pendiente':device.connected?'Conectada':device.available?'Disponible':device.lastConnected?`Última conexión: ${new Date(device.lastConnected*1000).toLocaleDateString()}`:'Sin conexión'}</small></div>
    {!device.pendingForget&&<button className="pair-icon-button pair-favorite" aria-label={device.favorite?'Quitar de favoritos '+device.name:'Marcar como favorito '+device.name} aria-pressed={device.favorite} disabled={busy} onClick={()=>run('device_pairing_favorite',{id:device.favorite?null:device.id})}><Star size={16} fill={device.favorite?'currentColor':'none'}/></button>}
    {!device.pendingForget&&<button disabled={busy||!native} onClick={()=>device.connected?run('device_pairing_disconnect'):connectKnown(device.id)}>{device.connected?'Desconectar':'Conectar'}</button>}
-   {!device.pendingForget&&<details className="pair-device-menu"><summary aria-label={'Opciones de '+device.name}><MoreHorizontal size={17}/></summary><button className="pair-danger" disabled={busy} onClick={e=>{e.currentTarget.closest('details').open=false;setConfirmForget(device)}}>Olvidar equipo</button></details>}
+   {!device.pendingForget&&<details className="pair-device-menu"><summary aria-label={'Opciones de '+device.name}><MoreHorizontal size={17}/></summary><button className="pair-danger pair-forget-action" disabled={busy} onClick={e=>{e.currentTarget.closest('details').open=false;setConfirmForget(device)}}><Unlink size={14}/>Olvidar equipo</button></details>}
   </article>)}</div>
   <button className="pair-primary" disabled={!native||busy} onClick={addKnown}>+ Vincular otra PC</button>
   <small className="pair-helper">Tu favorito tiene prioridad al reconectar. Solo se sincroniza con el equipo conectado.</small>

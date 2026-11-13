@@ -74,13 +74,12 @@ export function desktopEnvelope(area,edge,size,scale,fraction){
 
 // Floating mode keeps one anchor and native envelope for every visual state.
 export function pillSize(state,size='M',tab='home'){
- if(['idle','anticipate','retracted'].includes(state))return ({S:[120,26],M:[134,28],L:[148,30]}[size]||[134,28])
+ if(['idle','anticipate','retracted'].includes(state))return ({S:[82,30],M:[94,34],L:[106,38]}[size]||[94,34])
  return notchSize('top',state,size,tab)
 }
 export function pillPosition(area,width,height,point={x:.5,y:.1},scale=1){
  const margin=6*scale,anchorX=area.x+area.width*clamp(Number.isFinite(point.x)?point.x:.5,0,1),anchorY=area.y+area.height*clamp(Number.isFinite(point.y)?point.y:.1,0,1)
- const below=anchorY<=area.y+area.height/2
- return {x:Math.round(clamp(anchorX-width/2,area.x+margin,Math.max(area.x+margin,area.x+area.width-width-margin))),y:Math.round(clamp(below?anchorY-14*scale:anchorY+14*scale-height,area.y+margin,Math.max(area.y+margin,area.y+area.height-height-margin)))}
+ return {x:Math.round(clamp(anchorX-width/2,area.x+margin,Math.max(area.x+margin,area.x+area.width-width-margin))),y:Math.round(clamp(anchorY-height/2,area.y+margin,Math.max(area.y+margin,area.y+area.height-height-margin)))}
 }
 export function pillEnvelope(area,size,scale,point){
  const frame=[['idle','home'],['peek','lyrics-volume'],['peek','cleanup-details'],['open','home'],['open','settings']].map(([state,tab])=>{const [w,h]=pillSize(state,size,tab),width=Math.min(Math.round(w*scale),Math.max(1,area.width-12*scale)),height=Math.min(Math.round(h*scale),Math.max(1,area.height-12*scale));return {...pillPosition(area,width,height,point,scale),width,height}}).reduce(unionRects)

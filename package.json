@@ -10,7 +10,7 @@
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "tauri": "tauri",
-    "test": "node --test tests/shortcut-ui.test.mjs tests/device-pairing-ui.test.mjs tests/music-edge.test.mjs tests/notch-hover.test.mjs tests/weather.test.mjs tests/lyrics.test.mjs tests/dock-geometry.test.mjs tests/equalizer-colors.test.mjs tests/application-intent.test.mjs tests/preferences.test.mjs tests/assistant.test.mjs tests/page-preferences.test.mjs tests/pill-devices.test.mjs",
+    "test": "node --test tests/shortcut-ui.test.mjs tests/device-pairing-ui.test.mjs tests/music-edge.test.mjs tests/notch-hover.test.mjs tests/weather.test.mjs tests/lyrics.test.mjs tests/dock-geometry.test.mjs tests/equalizer-colors.test.mjs tests/application-intent.test.mjs tests/preferences.test.mjs tests/assistant.test.mjs tests/page-preferences.test.mjs tests/pill-devices.test.mjs tests/media-refresh.test.mjs",
     "test:browser": "node tests/notch-reveal.browser.mjs",
     "test:security": "node scripts/security-policy.mjs",
     "test:native": "cargo test --manifest-path native-tests/Cargo.toml"

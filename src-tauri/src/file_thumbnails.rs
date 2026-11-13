@@ -31,7 +31,7 @@ pub fn file(path: &Path) -> Option<String> {
     }
     let shell_path = crate::assistant_core::shell_folder_path(path.to_owned());
     let value = extract(&shell_path).filter(|s| valid_preview(s));
-    if let Ok(mut c) = cache.lock() {
+    if let (Some(_), Ok(mut c)) = (&value, cache.lock()) {
         c.retain(|(p, _, _, _)| p != path);
         c.push_back((path.to_owned(), meta.len(), stamp, value.clone()));
         while c.len() > 128 {

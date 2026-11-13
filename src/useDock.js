@@ -8,7 +8,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
   const [refresh,setRefresh]=useState(0)
   const shown=useRef(false),lastState=useRef(null),lastTab=useRef(null),nativeFrame=useRef(null)
   const monitorRef=useRef(null),queue=useRef(Promise.resolve()),revision=useRef(0),dragRef=useRef(null),suppressClick=useRef(false),moveRevision=useRef(0)
-  const mode=dock.mode||'notch',pill=mode==='pill',edge=pill?'top':dock.edge, lateral=isLateral(edge),state=expanded?'open':hovered||dragging?'peek':preview?'anticipate':retracted&&!pill?'retracted':'idle'
+  const mode=dock.mode||'notch',pill=mode==='pill',edge=pill?'top':dock.edge, lateral=isLateral(edge),state=expanded?'open':dragging?(dragRef.current?.visualState||'peek'):hovered?'peek':preview?'anticipate':retracted&&!pill?'retracted':'idle'
   const fraction=dock.offsets[edge]
   const monitorsRef=useRef([])
   const monitorKey=m=>`${m.name||"monitor"}:${m.position.x}:${m.position.y}`
@@ -24,6 +24,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
     root.dataset.mode=mode;root.dataset.edge=edge;root.dataset.notch=state;root.dataset.dragging=String(dragging);root.dataset.centered=String(pill?Math.abs(point.x-.5)<.0001&&Math.abs(point.y-.5)<.0001:Math.abs(fraction-.5)<.0001)
     root.style.setProperty('--dock-duration',duration+'ms')
     root.style.setProperty('--dock-ease',state==='peek'&&previous!=='peek'&&!reduced?'cubic-bezier(.2,1.12,.3,1)':'cubic-bezier(.22,1,.36,1)')
+    if(native&&pill&&dragRef.current?.nativeMove)return
     const [wantedW,wantedH]=(pill?pillSize(state,size,tab):notchSize(edge,state,size,tab,receiving))
     const setFrame=(x,y,w,h)=>{
       root.style.setProperty('--dock-left',x+'px');root.style.setProperty('--dock-top',y+'px')
@@ -117,38 +118,58 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
   },[native])
   const center=()=>setDock(d=>pill?{...d,pillPositions:{...d.pillPositions,[d.monitorId]:{x:.5,y:.5}}}:{...d,offsets:{...d.offsets,[d.edge]:.5}})
   const reanchor=()=>setRefresh(n=>n+1)
+  const moveFloating=async d=>{
+    if(d.moving)return
+    d.moving=true
+    try{
+      while(d.target){const target=d.target;d.target=null;await getCurrentWindow().setPosition(new PhysicalPosition(target.x,target.y));nativeFrame.current={...d.frame,x:target.x,y:target.y}}
+    }catch(error){onError('No se pudo mover Bimu: '+String(error))}
+    finally{d.moving=false}
+  }
+  const finishDrag=async e=>{
+    const d=dragRef.current;if(!d||e.pointerId!==d.pointer)return
+    d.ending=true
+    // Flush the last coalesced move before measuring the real desktop location.
+    while(d.moving)await new Promise(resolve=>setTimeout(resolve,8))
+    try{
+      if(pill&&native&&d.moved){
+        const win=getCurrentWindow(),origin=await win.outerPosition(),scale=await win.scaleFactor(),rect=document.querySelector('.desktop').getBoundingClientRect()
+        const center={x:origin.x+(rect.left+rect.width/2)*scale,y:origin.y+(rect.top+rect.height/2)*scale}
+        const m=monitorsRef.current.find(m=>center.x>=m.position.x&&center.y>=m.position.y&&center.x<m.position.x+m.size.width&&center.y<m.position.y+m.size.height)||monitorRef.current
+        const a=m.workArea,id=monitorKey(m),x=Math.max(0,Math.min(1,(center.x-a.position.x)/a.size.width)),y=Math.max(0,Math.min(1,(center.y-a.position.y)/a.size.height))
+        monitorRef.current=m;setDock(current=>({...current,monitorId:id,pillPositions:{...current.pillPositions,[id]:{x,y}}}))
+      }
+    }catch(error){onError(String(error))}
+    finally{dragRef.current=null;moveRevision.current++;setDragging(false);if(e.currentTarget?.hasPointerCapture?.(d.pointer))e.currentTarget.releasePointerCapture(d.pointer)}
+  }
   const handlers={
     onPointerDown:async e=>{
       if(e.button!==0)return
       e.preventDefault();e.currentTarget.setPointerCapture?.(e.pointerId)
-      const d={pointer:e.pointerId,start:fraction,x:e.screenX,y:e.screenY,moved:false,ready:!native};dragRef.current=d;suppressClick.current=false
-      try{if(native){const cursor=await cursorPosition();if(dragRef.current!==d)return;d.x=cursor.x;d.y=cursor.y;d.ready=true;const m=monitorRef.current;d.anchor={x:m.workArea.position.x+m.workArea.size.width*point.x,y:m.workArea.position.y+m.workArea.size.height*point.y}}}catch(err){dragRef.current=null;onError(String(err))}
+      const d={pointer:e.pointerId,start:fraction,x:e.screenX,y:e.screenY,moved:false,ready:!native,visualState:state,point:{...point}};dragRef.current=d;suppressClick.current=false
+      try{if(native){const cursor=await cursorPosition();if(dragRef.current!==d)return;d.x=cursor.x;d.y=cursor.y;d.frame={...nativeFrame.current};d.ready=true;d.nativeMove=pill}}catch(error){dragRef.current=null;onError(String(error))}
     },
     onPointerMove:async e=>{
-      const d=dragRef.current;if(!d?.ready||e.pointerId!==d.pointer)return
+      const d=dragRef.current;if(!d?.ready||d.ending||e.pointerId!==d.pointer)return
       const ticket=++moveRevision.current
       try{
-        const point=native?await cursorPosition():{x:e.screenX,y:e.screenY}
-        if(dragRef.current!==d||ticket!==moveRevision.current)return
+        const cursor=native?await cursorPosition():{x:e.screenX,y:e.screenY}
+        if(dragRef.current!==d||d.ending||ticket!==moveRevision.current)return
         const monitor=monitorRef.current,scale=native?monitor?.scaleFactor||1:1
-        const delta=pill?Math.hypot(point.x-d.x,point.y-d.y):lateral?point.y-d.y:point.x-d.x
+        const dx=cursor.x-d.x,dy=cursor.y-d.y,delta=pill?Math.hypot(dx,dy):lateral?dy:dx
         if(Math.abs(delta)<4*scale&&!d.moved)return
         d.moved=true;suppressClick.current=true;setDragging(true)
-        if(pill){
-          const m=monitorsRef.current.find(m=>point.x>=m.position.x&&point.y>=m.position.y&&point.x<m.position.x+m.size.width&&point.y<m.position.y+m.size.height)||monitor
-          const a=native?m.workArea:{position:{x:0,y:0},size:{width:window.innerWidth,height:window.innerHeight}}
-          const anchor=d.anchor||{x:window.innerWidth*(dock.pillPositions?.[dock.monitorId]?.x??.5),y:window.innerHeight*(dock.pillPositions?.[dock.monitorId]?.y??.12)}
-          const snap=(value,span)=>Math.abs(value-.5)*span<12*scale?.5:Math.max(0,Math.min(1,value));const x=snap((anchor.x+point.x-d.x-a.position.x)/a.size.width,a.size.width),y=snap((anchor.y+point.y-d.y-a.position.y)/a.size.height,a.size.height),id=native?monitorKey(m):'preview'
-          setDock(current=>({...current,monitorId:id,pillPositions:{...current.pillPositions,[id]:{x,y}}}));return
-        }
+        if(pill&&native){d.target={x:Math.round(d.frame.x+dx),y:Math.round(d.frame.y+dy)};moveFloating(d);return}
+        if(pill){setDock(current=>({...current,monitorId:'preview',pillPositions:{...current.pillPositions,preview:{x:Math.max(0,Math.min(1,d.point.x+dx/window.innerWidth)),y:Math.max(0,Math.min(1,d.point.y+dy/window.innerHeight))}}}));return}
         const span=native?(lateral?monitor?.workArea.size.height:monitor?.workArea.size.width):(lateral?window.innerHeight:window.innerWidth)
         const next=slideOffset(d.start,delta,span||1000,scale)
         setDock(current=>({...current,offsets:{...current.offsets,[edge]:next}}))
-      }catch(err){onError(String(err))}
+      }catch(error){onError(String(error))}
     },
-    onPointerUp:e=>{dragRef.current=null;moveRevision.current++;setDragging(false);e.currentTarget.releasePointerCapture?.(e.pointerId)},
-    onPointerCancel:()=>{dragRef.current=null;moveRevision.current++;setDragging(false)},
-    onLostPointerCapture:()=>{dragRef.current=null;moveRevision.current++;setDragging(false)}
+    onPointerUp:finishDrag,
+    onPointerCancel:finishDrag,
+    onLostPointerCapture:e=>{if(dragRef.current&&!dragRef.current.ending)finishDrag(e)}
   }
+
   return {mode,setMode:mode=>setDock(d=>({...d,mode:mode==='pill'?'pill':'notch'})),edge,lateral,state,dragging,fraction,center,reanchor,setEdge:edge=>{if(EDGES.includes(edge))setDock(d=>({...d,edge}))},centered:pill?Math.abs(point.x-.5)<.0001&&Math.abs(point.y-.5)<.0001:Math.abs(fraction-.5)<.0001,handlers,consumeDrag:()=>{const moved=suppressClick.current;suppressClick.current=false;return moved}}
 }

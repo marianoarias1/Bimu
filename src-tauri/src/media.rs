@@ -22,9 +22,49 @@ pub struct MediaState {
 }
 
 #[cfg(windows)]
-async fn current() -> windows::core::Result<windows::Media::Control::GlobalSystemMediaTransportControlsSession> {
-    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
-    GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?.GetCurrentSession()
+mod sessions {
+    use std::sync::{Mutex,OnceLock};
+    use windows::Media::Control::{GlobalSystemMediaTransportControlsSession as Session,GlobalSystemMediaTransportControlsSessionManager as Manager,GlobalSystemMediaTransportControlsSessionMediaProperties as Properties,GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status};
+    static MANAGER:OnceLock<Mutex<Option<Manager>>>=OnceLock::new();
+    static PREVIOUS:Mutex<String>=Mutex::new(String::new());
+    async fn manager()->windows::core::Result<Manager>{
+        let slot=MANAGER.get_or_init(||Mutex::new(None));
+        if let Some(manager)=slot.lock().ok().and_then(|value|value.clone()){return Ok(manager)}
+        let manager=Manager::RequestAsync()?.await?;
+        if let Ok(mut value)=slot.lock(){*value=Some(manager.clone())}Ok(manager)
+    }
+    pub async fn resolve()->windows::core::Result<Option<(Session,Properties)>>{
+        let manager=manager().await?;
+        let current=manager.GetCurrentSession().ok();
+        let mut sessions:Vec<Session>=current.clone().into_iter().collect();
+        match manager.GetSessions(){
+            Ok(all)=>{for i in 0..all.Size()?.min(32){if let Ok(session)=all.GetAt(i){if !sessions.contains(&session){sessions.push(session)}}}},
+            Err(error)=>{if let Some(slot)=MANAGER.get(){if let Ok(mut value)=slot.lock(){*value=None}}if sessions.is_empty(){return Err(error)}}
+        }
+        let previous=PREVIOUS.lock().map(|value|value.clone()).unwrap_or_default();
+        let hints:Vec<_>=sessions.iter().map(|session|crate::media_selection::Candidate{
+            playing:session.GetPlaybackInfo().and_then(|info|info.PlaybackStatus()).ok()==Some(Status::Playing),
+            current:current.as_ref()==Some(session),
+            previous:!previous.is_empty()&&session.SourceAppUserModelId().map(|id|id.to_string_lossy()==previous).unwrap_or(false)
+        }).collect();
+        let mut last_error=None;
+        for index in crate::media_selection::ranked(&hints).into_iter().take(8){
+            let session=&sessions[index];
+            let result=match session.TryGetMediaPropertiesAsync(){Ok(operation)=>operation.await,Err(error)=>Err(error)};
+            match result{
+                Ok(props) if props.Title().map(|title|!title.to_string_lossy().trim().is_empty()).unwrap_or(false)=>{
+                    if let Ok(mut value)=PREVIOUS.lock(){*value=session.SourceAppUserModelId().map(|id|id.to_string_lossy()).unwrap_or_default()}
+                    return Ok(Some((session.clone(),props)))
+                },
+                Ok(_)=>{},Err(error)=>last_error=Some(error)
+            }
+        }
+        if let Some(error)=last_error{return Err(error)}Ok(None)
+    }
+}
+#[cfg(windows)]
+async fn current()->windows::core::Result<windows::Media::Control::GlobalSystemMediaTransportControlsSession>{
+    sessions::resolve().await?.map(|(session,_)|session).ok_or_else(||windows::core::Error::from_hresult(windows::core::HRESULT(0x80070490u32 as i32)))
 }
 
 #[tauri::command]
@@ -37,8 +77,7 @@ async fn media_state_inner(include_cover: bool) -> Result<Option<MediaState>, St
     #[cfg(windows)] {
         use base64::{engine::general_purpose::STANDARD, Engine};
         use windows::{Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus, Storage::Streams::DataReader};
-        let session = match current().await { Ok(v) => v, Err(_) => return Ok(None) };
-        let props = session.TryGetMediaPropertiesAsync().map_err(|e| e.to_string())?.await.map_err(|e| e.to_string())?;
+        let (session,props)=match sessions::resolve().await.map_err(|e|e.to_string())?{Some(value)=>value,None=>return Ok(None)};
         let title = props.Title().map(|v| v.to_string_lossy()).unwrap_or_default();
         if title.is_empty() { return Ok(None) }
         let artist = props.Artist().map(|v| v.to_string_lossy()).unwrap_or_default();

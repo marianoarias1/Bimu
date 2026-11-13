@@ -21,3 +21,11 @@ Shell thumbnails are requested lazily for visible items by their current saved I
 Unit/integration checks cover negative monitor origins/DPI, the closed comet, explicit new-pairing navigation, credential migration/failure behavior, revocation precedence and pause/resume over real encrypted channels. Windows CI additionally exercises a real Shell thumbnail and the production React UI in Edge with native IPC fixtures. The UI fixtures validate rendering/navigation, not actual multi-PC behavior.
 
 Before merge, test both designs with themes/custom colors and real image files/captures; move the pill across monitors/DPI and restart. With at least three updated PCs, switch between saved peers, change the favorite, disconnect and resume, forget an online peer, and deliver a pending forget after an offline peer returns. Check that only the selected connection shares data and that existing transfer-limit behavior remains intact. Also test basic sync with a previous-version peer, with management controls unavailable until it is updated. Recheck lyrics/volume, cleanup layout and all notch placements. The Store startup path needs a real MSIX installation.
+
+## Review corrections
+
+The compact pill now shows eyes and clock only. Floating layouts share a center anchor; dragging moves the existing native frame without resizing or rebasing the content at each pointer event. The final position is measured from the visible surface after the last move.
+
+Media polling is single-flight, cover loading is independent, and brief missing samples have a bounded six-second grace period. Native selection checks available Windows media sessions and prefers actual playback over an inactive current session. File thumbnail failures are retryable instead of permanently cached; visible panels rearm retries, and a missing peer thumbnail does not trigger an event/request loop. The saved-device action menu uses an opaque surface and an eight-pixel gap.
+
+Regression checks cover slow samples, playback fallback ranking, transient thumbnail misses, actual frame deltas through the vertical midpoint, absence of native resizes while dragging, and menu spacing in both themes. Desktop IPC fixtures model native position changes but do not replace real multi-monitor/DPI or Spotify/YouTube testing.
