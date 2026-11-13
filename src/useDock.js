@@ -10,7 +10,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
   const monitorRef=useRef(null),queue=useRef(Promise.resolve()),revision=useRef(0),dragRef=useRef(null),suppressClick=useRef(false),moveRevision=useRef(0)
   const mode=dock.mode||'notch',pill=mode==='pill',edge=pill?'top':dock.edge, lateral=isLateral(edge),state=expanded?'open':dragging?(dragRef.current?.visualState||'peek'):hovered?'peek':preview?'anticipate':retracted&&!pill?'retracted':'idle'
   const fraction=dock.offsets[edge]
-  const monitorsRef=useRef([])
+  const monitorsRef=useRef([]),floatedFrame=useRef(false)
   const monitorKey=m=>`${m.name||"monitor"}:${m.position.x}:${m.position.y}`
   const point=dock.pillPositions?.[dock.monitorId]||{x:.5,y:.12}
   useEffect(()=>{localStorage.setItem('companion-dock',JSON.stringify(dock))},[dock])
@@ -59,7 +59,11 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
       const bounds={x:area.position.x,y:area.position.y,width:area.size.width,height:area.size.height}
       const pos=pill?pillPosition(bounds,Math.round(width*scale),Math.round(height*scale),point,scale):dockPosition(bounds,Math.round(width*scale),Math.round(height*scale),edge,fraction)
       const target={...pos,width:Math.round(width*scale),height:Math.round(height*scale)}
-      const frame=pill?pillEnvelope(bounds,size,scale,point):desktopEnvelope(bounds,edge,size,scale,fraction)
+      const wantedFrame=pill?pillEnvelope(bounds,size,scale,point):desktopEnvelope(bounds,edge,size,scale,fraction)
+      const previousFrame=nativeFrame.current
+      const keepDraggedFrame=pill&&floatedFrame.current&&previousFrame&&target.x>=previousFrame.x&&target.y>=previousFrame.y&&target.x+target.width<=previousFrame.x+previousFrame.width&&target.y+target.height<=previousFrame.y+previousFrame.height
+      const frame=keepDraggedFrame?previousFrame:wantedFrame
+      if(!keepDraggedFrame)floatedFrame.current=false
       root.dataset.voiceSide=target.x-area.position.x>=224*scale?'left':'right'
       const localX=(target.x-frame.x)/scale,localY=(target.y-frame.y)/scale
       const sameFrame=nativeFrame.current&&['x','y','width','height'].every(k=>nativeFrame.current[k]===frame[k])
@@ -159,7 +163,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
         const dx=cursor.x-d.x,dy=cursor.y-d.y,delta=pill?Math.hypot(dx,dy):lateral?dy:dx
         if(Math.abs(delta)<4*scale&&!d.moved)return
         d.moved=true;suppressClick.current=true;setDragging(true)
-        if(pill&&native){d.target={x:Math.round(d.frame.x+dx),y:Math.round(d.frame.y+dy)};moveFloating(d);return}
+        if(pill&&native){floatedFrame.current=true;d.target={x:Math.round(d.frame.x+dx),y:Math.round(d.frame.y+dy)};moveFloating(d);return}
         if(pill){setDock(current=>({...current,monitorId:'preview',pillPositions:{...current.pillPositions,preview:{x:Math.max(0,Math.min(1,d.point.x+dx/window.innerWidth)),y:Math.max(0,Math.min(1,d.point.y+dy/window.innerHeight))}}}));return}
         const span=native?(lateral?monitor?.workArea.size.height:monitor?.workArea.size.width):(lateral?window.innerHeight:window.innerWidth)
         const next=slideOffset(d.start,delta,span||1000,scale)

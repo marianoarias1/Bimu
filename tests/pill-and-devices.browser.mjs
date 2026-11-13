@@ -78,10 +78,13 @@ try{
      assert.ok(Math.abs(moved.x-origin.x-dx)<2&&Math.abs(moved.y-origin.y-dy)<2,'native surface must follow every pointer delta without rebasing')
     }
     assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length),sizeCalls,'drag must not resize the native frame')
+    const movesBeforeRelease=await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_position')).length)
     await page.mouse.up();await page.waitForTimeout(150)
+    assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_position')).length),movesBeforeRelease,'release must preserve the dragged frame rather than jump to a new envelope')
     const point=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('companion-dock'));return d.pillPositions[d.monitorId]});assert.ok(Math.abs(point.x-(.5+300/1440))<.01);assert.ok(Math.abs(point.y-(.12+420/860))<.01);
 
    }
+   await surface.hover();await page.waitForFunction(()=>document.documentElement.dataset.notch==='peek')
    if(theme==='dark'){
     assert.equal(await page.evaluate(()=>window.__mediaMax),1,'slow polls must not overlap')
     await page.evaluate(()=>{window.__mediaMissing=true});await page.waitForTimeout(2400);assert.ok((await page.locator('.player-track strong').innerText()).includes('Canción de prueba'),'one missing Windows sample must not erase playback');await page.evaluate(()=>{window.__mediaMissing=false})
