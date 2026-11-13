@@ -35,11 +35,21 @@ public static class BimuNativeWindow {
 '@
 $oldArguments=$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $appProcess=$null;$testProcess=$null
+# Hosted runners are elevated. Runtime 150+ intentionally ignores WEBVIEW2_*
+# arguments there; an app-scoped machine policy is supported and restored below.
+$policy='HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+$policyName='Bimu.exe';$policyHadValue=$false;$policyPrevious=$null;$policyChanged=$false
 $stdout=Join-Path $env:RUNNER_TEMP 'bimu-native-smoke.out'
 $stderr=Join-Path $env:RUNNER_TEMP 'bimu-native-smoke.err'
 try {
   # Debugging is enabled only for this isolated CI process, never by the app.
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9225 --remote-debugging-address=127.0.0.1'
+  if($env:GITHUB_ACTIONS -eq 'true'){
+    if(Test-Path $policy){$key=Get-Item $policy;$policyHadValue=$key.GetValueNames() -contains $policyName;if($policyHadValue){$policyPrevious=$key.GetValue($policyName)}}
+    New-Item -Path $policy -Force | Out-Null
+    New-ItemProperty -Path $policy -Name $policyName -Value $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -PropertyType String -Force | Out-Null
+    $policyChanged=$true
+  }
   $appProcess=Start-Process -FilePath (Resolve-Path $Executable).Path -PassThru
   $testProcess=Start-Process -FilePath (Get-Command node).Source -ArgumentList 'tests/windows-native.browser.mjs' -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   $deadline=[DateTime]::UtcNow.AddSeconds(70);$samples=0;$misses=0
@@ -63,5 +73,9 @@ try {
   Get-Content $stderr -ErrorAction SilentlyContinue
   if($testProcess -and !$testProcess.HasExited){Stop-Process -Id $testProcess.Id -Force -ErrorAction SilentlyContinue}
   if($appProcess -and !$appProcess.HasExited){Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue}
+  if($policyChanged){
+    if($policyHadValue){Set-ItemProperty -Path $policy -Name $policyName -Value $policyPrevious}
+    else{Remove-ItemProperty -Path $policy -Name $policyName -ErrorAction SilentlyContinue}
+  }
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$oldArguments
 }
