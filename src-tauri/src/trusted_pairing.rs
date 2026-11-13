@@ -54,3 +54,8 @@ pub fn establish(channel:&mut SecureChannel,role:Role,store:impl Fn(&Trust)->Res
   assert!(saved.lock().unwrap().is_none());host.join().unwrap();
  }
 }
+
+#[cfg(all(test,windows))]mod protection_tests{
+ use super::*;
+ #[test]fn device_credentials_are_encrypted_and_authenticated_by_windows(){let bytes=b"bimu protected device test credential";let encrypted=protect(bytes,true).unwrap();assert_ne!(encrypted,bytes);assert_eq!(protect(&encrypted,false).unwrap(),bytes);let mut damaged=encrypted;let at=damaged.len()/2;damaged[at]^=1;assert!(protect(&damaged,false).is_err());}
+}

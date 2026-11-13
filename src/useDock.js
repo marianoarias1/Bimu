@@ -122,7 +122,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
       if(e.button!==0)return
       e.preventDefault();e.currentTarget.setPointerCapture?.(e.pointerId)
       const d={pointer:e.pointerId,start:fraction,x:e.screenX,y:e.screenY,moved:false,ready:!native};dragRef.current=d;suppressClick.current=false
-      try{if(native){const point=await cursorPosition();if(dragRef.current!==d)return;d.x=point.x;d.y=point.y;d.ready=true;const m=monitorRef.current;d.anchor={x:m.workArea.position.x+m.workArea.size.width*point.x,y:m.workArea.position.y+m.workArea.size.height*point.y}}}catch(err){dragRef.current=null;onError(String(err))}
+      try{if(native){const cursor=await cursorPosition();if(dragRef.current!==d)return;d.x=cursor.x;d.y=cursor.y;d.ready=true;const m=monitorRef.current;d.anchor={x:m.workArea.position.x+m.workArea.size.width*point.x,y:m.workArea.position.y+m.workArea.size.height*point.y}}}catch(err){dragRef.current=null;onError(String(err))}
     },
     onPointerMove:async e=>{
       const d=dragRef.current;if(!d?.ready||e.pointerId!==d.pointer)return

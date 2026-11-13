@@ -40,3 +40,22 @@ pub fn valid_preview(value:&str)->bool{
   match &bytes[at+4..at+8]{b"IHDR" if at==8&&length==13=>{},b"IDAT"=>pixels=true,b"IEND" if length==0=>return pixels&&end==bytes.len(),b"sRGB" if length==1=>{},b"gAMA" if length==4=>{},b"pHYs" if length==9=>{},_=>return false}at=end;
  }false
 }
+
+/// Older peers reject unknown metadata fields, so optional revisions are v6-only.
+pub fn for_peer(mut items:Vec<ShelfMetadata>,capable:bool)->Vec<ShelfMetadata>{if !capable{for item in &mut items{item.revision=None}}items}
+#[cfg(test)]mod preview_compatibility_tests{
+ use super::*;use base64::{engine::general_purpose::STANDARD,Engine};
+ #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct Legacy{ id:String,name:String,kind:String,available:bool }
+ #[test]fn legacy_catalogs_keep_the_original_schema(){
+  let item=ShelfMetadata{revision:Some("123:456".into()),id:"a".repeat(64),name:"foto.png".into(),kind:"file".into(),available:true};
+  let bytes=serde_json::to_vec(&for_peer(vec![item.clone()],false)).unwrap();let legacy:Vec<Legacy>=serde_json::from_slice(&bytes).unwrap();assert_eq!(legacy[0].id,item.id);assert_eq!(legacy[0].name,item.name);assert_eq!(legacy[0].kind,item.kind);assert!(legacy[0].available);
+  assert_eq!(for_peer(vec![item],true)[0].revision.as_deref(),Some("123:456"));
+ }
+ #[test]fn previews_reject_unbounded_dimensions_and_metadata(){
+  let png="iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGPo2RfwH4QZYAwAW8AKZWZiO2wAAAAASUVORK5CYII=";
+  let value=format!("data:image/png;base64,{png}");assert!(valid_preview(&value));
+  let mut bytes=STANDARD.decode(png).unwrap();bytes[16..20].copy_from_slice(&10000u32.to_be_bytes());assert!(!valid_preview(&format!("data:image/png;base64,{}",STANDARD.encode(&bytes))));
+  assert!(!valid_preview(&format!("data:image/svg+xml;base64,{png}")));assert!(!valid_preview(&(value+&"A".repeat(65536))));
+  let mut bytes=STANDARD.decode(png).unwrap();bytes[37..41].copy_from_slice(b"iCCP");assert!(!valid_preview(&format!("data:image/png;base64,{}",STANDARD.encode(bytes))));
+ }
+}

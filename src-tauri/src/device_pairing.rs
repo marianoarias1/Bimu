@@ -189,7 +189,7 @@ fn next_shelf_or_clipboard(app:&AppHandle,shared:&DevicePairing,generation:u64,l
  // a stale cache can recover without disconnecting or touching local limits.
  let dirty={let mut inner=shared.0.lock().map_err(|_|"Conexión ocupada")?;let dirty=inner.shelf_dirty;inner.shelf_dirty=false;dirty};
  if crate::shelf_shared::catalog_due(last.is_none(),dirty,last_check.elapsed()){
-  *last_check=Instant::now();let snapshot=crate::shelf::shared_snapshot(app)?;
+  *last_check=Instant::now();let capable=shared.0.lock().map(|i|i.management).unwrap_or(false);let snapshot=crate::shelf_shared::for_peer(crate::shelf::shared_snapshot(app)?,capable);
   *last=Some(snapshot.clone());return Ok(Some(ClipboardPayload::ShelfCatalog(snapshot)))
  }
  Ok(take_outgoing(shared,generation))
@@ -228,7 +228,7 @@ fn session_with_trust(app:AppHandle, shared:DevicePairing, generation:u64, mut c
    Ok(crate::connection_control::Decision::Sync)=>{},Err(e)=>{fail(&shared,generation,&e);return}
   }
  }else if record.revoked||record.paused||!book.automatic{if let Ok(mut inner)=shared.0.lock(){if inner.generation==generation{reset(&mut inner);}}return}
- let saved=crate::trusted_pairing::edit(&app,|b|{let d=b.devices.iter_mut().find(|d|d.id==id&&!d.revoked).ok_or("El vínculo fue revocado")?;d.name=peer.clone();d.management=capable;d.paused=false;d.last_connected=SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();d.paused=false;d.pause_pending=false;b.selected=Some(id.clone());b.automatic=true;Ok(())});
+ let saved=crate::trusted_pairing::edit(&app,|b|{let d=b.devices.iter_mut().find(|d|d.id==id&&!d.revoked).ok_or("El vínculo fue revocado")?;d.name=peer.clone();d.management=capable;d.last_connected=SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();d.paused=false;d.pause_pending=false;b.selected=Some(id.clone());b.automatic=true;Ok(())});
  if let Err(e)=saved{fail(&shared,generation,&e);return}
  {let Ok(mut inner)=shared.0.lock()else{return};if inner.generation!=generation{return}
   if inner.remote_peer.as_deref()!=Some(peer.as_str()){inner.remote_shelf.clear();inner.hidden_shelf.clear();}

@@ -91,6 +91,10 @@ fn receive_payload(channel:&mut SecureChannel,file_limit:usize)->Result<Option<C
 }
 #[cfg(test)] mod tests{
  use super::*;use crate::pairing_core::Role;use crate::pairing_transport::pair;use std::{net::{TcpListener,TcpStream},thread};
+ #[test]fn control_and_preview_messages_are_bounded_and_round_trip(){
+  for payload in [ClipboardPayload::ConnectionControl{action:"disconnect".into()},ClipboardPayload::ConnectionControl{action:"disconnected".into()},ClipboardPayload::PreviewRequest{id:"a".repeat(64),token:42},ClipboardPayload::PreviewReply{id:"a".repeat(64),token:42,preview:None}]{assert_eq!(decode(&encode(payload.clone()).unwrap()).unwrap(),payload)}
+  assert!(decode(br#"{"kind":"connection_control","action":"resume"}"#).is_err());assert!(decode(br#"{"kind":"preview_request","id":"../file","token":1}"#).is_err());
+ }
  #[test] fn image_wire_format_stays_compatible_across_base64_versions(){
   // A fixed wire fixture is exercised by the app (new base64) and native-tests
   // (the previous base64), so an encoder/decoder changing together cannot hide drift.

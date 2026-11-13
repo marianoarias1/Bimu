@@ -66,6 +66,7 @@ jobs:
       - run: npm test
       - name: Verify notch reveal frames in Microsoft Edge
         run: |
+          npm run build
           npm run test:browser
           node tests/pill-and-devices.browser.mjs
       - name: Preserve reveal screenshots
