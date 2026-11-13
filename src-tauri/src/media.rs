@@ -23,23 +23,17 @@ pub struct MediaState {
 
 #[cfg(windows)]
 mod sessions {
-    use std::sync::{Mutex,OnceLock};
+    use std::sync::Mutex;
     use windows::Media::Control::{GlobalSystemMediaTransportControlsSession as Session,GlobalSystemMediaTransportControlsSessionManager as Manager,GlobalSystemMediaTransportControlsSessionMediaProperties as Properties,GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status};
-    static MANAGER:OnceLock<Mutex<Option<Manager>>>=OnceLock::new();
     static PREVIOUS:Mutex<String>=Mutex::new(String::new());
-    async fn manager()->windows::core::Result<Manager>{
-        let slot=MANAGER.get_or_init(||Mutex::new(None));
-        if let Some(manager)=slot.lock().ok().and_then(|value|value.clone()){return Ok(manager)}
-        let manager=Manager::RequestAsync()?.await?;
-        if let Ok(mut value)=slot.lock(){*value=Some(manager.clone())}Ok(manager)
-    }
+    async fn manager()->windows::core::Result<Manager>{Manager::RequestAsync()?.await}
     pub async fn resolve()->windows::core::Result<Option<(Session,Properties)>>{
         let manager=manager().await?;
         let current=manager.GetCurrentSession().ok();
         let mut sessions:Vec<Session>=current.clone().into_iter().collect();
         match manager.GetSessions(){
             Ok(all)=>{for i in 0..all.Size()?.min(32){if let Ok(session)=all.GetAt(i){if !sessions.contains(&session){sessions.push(session)}}}},
-            Err(error)=>{if let Some(slot)=MANAGER.get(){if let Ok(mut value)=slot.lock(){*value=None}}if sessions.is_empty(){return Err(error)}}
+            Err(error)=>{if sessions.is_empty(){return Err(error)}}
         }
         let previous=PREVIOUS.lock().map(|value|value.clone()).unwrap_or_default();
         let hints:Vec<_>=sessions.iter().map(|session|crate::media_selection::Candidate{
@@ -69,8 +63,8 @@ async fn current()->windows::core::Result<windows::Media::Control::GlobalSystemM
 
 #[tauri::command]
 pub async fn media_state(include_cover: bool) -> Result<Option<MediaState>, String> {
-    tauri::async_runtime::spawn_blocking(move || tauri::async_runtime::block_on(media_state_inner(include_cover)))
-        .await.map_err(|e| e.to_string())?
+    #[cfg(windows)]{crate::media_worker::run(move||media_state_inner(include_cover)).await}
+    #[cfg(not(windows))]{let _=include_cover;Ok(None)}
 }
 
 async fn media_state_inner(include_cover: bool) -> Result<Option<MediaState>, String> {
@@ -130,7 +124,11 @@ mod tests {
 }
 
 #[tauri::command]
-pub async fn media_control(action: String) -> Result<(), String> {
+pub async fn media_control(action:String)->Result<(),String>{
+    #[cfg(windows)]{crate::media_worker::run(move||media_control_inner(action)).await}
+    #[cfg(not(windows))]{let _=action;Err("Disponible en Windows".into())}
+}
+async fn media_control_inner(action: String) -> Result<(), String> {
     #[cfg(windows)] {
         let session = current().await.map_err(|e| e.to_string())?;
         let request = match action.as_str() {
@@ -158,7 +156,11 @@ fn seek_range(session: &windows::Media::Control::GlobalSystemMediaTransportContr
 }
 
 #[tauri::command]
-pub async fn media_seek(source: String, title: String, artist: String, seconds: f64) -> Result<f64, String> {
+pub async fn media_seek(source:String,title:String,artist:String,seconds:f64)->Result<f64,String>{
+    #[cfg(windows)]{crate::media_worker::run(move||media_seek_inner(source,title,artist,seconds)).await}
+    #[cfg(not(windows))]{let _=(source,title,artist,seconds);Err("Disponible en Windows".into())}
+}
+async fn media_seek_inner(source: String, title: String, artist: String, seconds: f64) -> Result<f64, String> {
     if !seconds.is_finite() || seconds < 0. {
         return Err("Posición de reproducción inválida.".into());
     }
@@ -189,5 +191,21 @@ pub async fn media_seek(source: String, title: String, artist: String, seconds: 
     {
         let _ = (source, title, artist);
         Err("Disponible en Windows".into())
+    }
+}
+
+#[cfg(all(test,windows))]mod native_tests{
+    #[test]fn fresh_thread_can_query_the_real_windows_media_service(){
+        let result=std::thread::spawn(||tauri::async_runtime::block_on(super::media_state(false))).join().expect("native caller thread");
+        assert!(result.is_ok(),"The real SMTC query must work without relying on another feature initializing COM: {:?}",result.err());
+    }
+    #[test]fn media_worker_keeps_one_initialized_apartment_for_repeated_requests(){
+        #[link(name="ole32")]extern "system"{fn CoGetApartmentType(kind:*mut i32,qualifier:*mut i32)->i32;}
+        let ids=tauri::async_runtime::block_on(async{
+            let mut ids=Vec::new();for _ in 0..3{ids.push(crate::media_worker::run(||async{
+                let(mut kind,mut qualifier)=(0,0);let result=unsafe{CoGetApartmentType(&mut kind,&mut qualifier)};
+                assert!(result>=0);assert_eq!(kind,1,"MTA apartment");Ok(std::thread::current().id())
+            }).await.unwrap())}ids
+        });assert!(ids.iter().all(|id|id==&ids[0]));
     }
 }

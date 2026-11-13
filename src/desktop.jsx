@@ -153,7 +153,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
         }
       }
     }catch{
-      if(mediaMounted.current&&revision===mediaRevision.current){const value=retainMissingMedia(mediaRef.current,mediaLastSeen.current,Date.now());mediaRef.current=value;setMedia(value);setMediaError('No se pudo consultar la reproducción.')}
+      if(mediaMounted.current&&revision===mediaRevision.current){const value=retainMissingMedia(mediaRef.current,mediaLastSeen.current,Date.now());mediaRef.current=value;setMedia(value)}
     }
   })
   const refreshMedia=()=>mediaPolling.current()

@@ -35,6 +35,7 @@ mod application_intent;
 mod application_registry;
 mod system_status;
 mod media;
+mod media_worker;
 mod media_selection;
 mod shelf;
 mod lyrics;

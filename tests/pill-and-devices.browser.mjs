@@ -23,7 +23,7 @@ try{
    const monitor={name:'Main',position:{x:0,y:0},size:{width:1440,height:900},scaleFactor:1,workArea:{position:{x:0,y:0},size:{width:1440,height:860}}}
    let count=0;const callbacks={},devices=[{id:'a',name:'PC principal',favorite:true,connected:true,available:true,lastConnected:1700000000,management:true,pendingForget:false},{id:'b',name:'PC de trabajo',favorite:false,connected:false,available:true,lastConnected:1700000000,management:true,pendingForget:false}]
    const status={phase:'connected',peer:'PC principal',activeId:'a',devices,automatic:true,linked:true,localName:'Notebook',transferLimitMb:30,effectiveLimitMb:30,limitConfigured:false,isMain:false,usesMainLimit:false}
-   window.isTauri=true;window.__bimuCalls=[];window.__bimuCursor={x:100,y:100};window.__bimuWindow={x:0,y:0};window.__mediaConcurrent=0;window.__mediaMax=0;window.__mediaMissing=false;const thumbnails={}
+   window.isTauri=true;window.__bimuCalls=[];window.__bimuCursor={x:100,y:100};window.__bimuWindow={x:0,y:0};window.__mediaConcurrent=0;window.__mediaMax=0;window.__mediaMissing=false;window.__mediaFailure=false;const thumbnails={}
    window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}}
    window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(cb){callbacks[++count]=cb;return count},unregisterCallback(id){delete callbacks[id]},async invoke(command,args={}){
     window.__bimuCalls.push({command,args})
@@ -37,7 +37,7 @@ try{
     if(command==='apps_list'||command==='shortcuts_list'||command==='chrome_profiles')return []
     if(command==='startup_sync')return {enabled:false,supported:true,automaticLaunch:false}
     if(command==='system_status')return {batteryPercent:null,wifiSignal:80,charging:false}
-    if(command==='media_state'){if(!args.includeCover){window.__mediaConcurrent++;window.__mediaMax=Math.max(window.__mediaMax,window.__mediaConcurrent);if(selected==='music'&&theme==='dark')await new Promise(r=>setTimeout(r,1800));window.__mediaConcurrent--;if(window.__mediaMissing)return null}return {title:'Canción de prueba',artist:'Artista',source:'spotify',playing:true,position:30,duration:180,seekRange:[0,180],sampledAtMs:Date.now(),cover:png}}
+    if(command==='media_state'){if(!args.includeCover){window.__mediaConcurrent++;window.__mediaMax=Math.max(window.__mediaMax,window.__mediaConcurrent);if(selected==='music'&&theme==='dark')await new Promise(r=>setTimeout(r,1800));window.__mediaConcurrent--;if(window.__mediaFailure)throw Error('native service temporarily unavailable');if(window.__mediaMissing)return null}return {title:'Canción de prueba',artist:'Artista',source:'spotify',playing:true,position:30,duration:180,seekRange:[0,180],sampledAtMs:Date.now(),cover:png}}
     if(command==='lyrics_lookup')return {status:'synced',syncedLyrics:'[00:00.00] Una primera línea\n[00:15.00] La música sigue acá\n[00:45.00] Una tercera línea'}
     if(command==='system_volume')return {level:50,muted:false}
     if(command==='shelf_list')return [{id:'a'.repeat(64),name:'flowers.png',path:'C:\\flowers.png',kind:'file',available:true,remote:false,online:true,preview_version:'1:1'},{id:'peer:'+'b'.repeat(64),name:'playa.png',path:'',kind:'file',available:true,remote:true,online:true,origin:'PC principal',peer_id:'peer-a',preview_version:'1:1'}]
@@ -88,6 +88,7 @@ try{
    if(theme==='dark'){
     assert.equal(await page.evaluate(()=>window.__mediaMax),1,'slow polls must not overlap')
     await page.evaluate(()=>{window.__mediaMissing=true});await page.waitForTimeout(2400);assert.ok((await page.locator('.player-track strong').innerText()).includes('Canción de prueba'),'one missing Windows sample must not erase playback');await page.evaluate(()=>{window.__mediaMissing=false})
+    await page.evaluate(()=>{window.__mediaFailure=true});await page.waitForTimeout(2200);assert.equal(await page.getByText('No se pudo consultar la reproducción.',{exact:true}).count(),0);await page.evaluate(()=>{window.__mediaFailure=false})
    }
    await page.getByRole('button',{name:'Abrir ajustes',exact:true}).click();await page.getByRole('button',{name:'Ajustes avanzados',exact:true}).click()
    await page.getByRole('navigation',{name:'Secciones de ajustes'}).getByRole('button',{name:'General',exact:true}).click()

@@ -29,3 +29,9 @@ The compact pill now shows eyes and clock only. Floating layouts share a center 
 Media polling is single-flight, cover loading is independent, and brief missing samples have a bounded six-second grace period. Native selection checks available Windows media sessions and prefers actual playback over an inactive current session. File thumbnail failures are retryable instead of permanently cached; visible panels rearm retries, and a missing peer thumbnail does not trigger an event/request loop. The saved-device action menu uses an opaque surface and an eight-pixel gap.
 
 Regression checks cover slow samples, playback fallback ranking, transient thumbnail misses, actual frame deltas through the vertical midpoint, absence of native resizes while dragging, and menu spacing in both themes. Desktop IPC fixtures model native position changes but do not replace real multi-monitor/DPI or Spotify/YouTube testing.
+
+## Native responsiveness and WinRT lifecycle
+
+SMTC snapshots, controls and seeks run on a bounded dedicated worker initialized with RoInitialize(MTA). COM objects are no longer retained from arbitrary task-pool threads. Async provider waits and queued callers have deadlines. WLAN probing runs outside the UI thread and its child process has a two-second deadline. Query failures are not presented as a playback alert.
+
+Windows checks now include a real SMTC query from a fresh caller thread and repeated apartment/thread checks. After building the installer, CI launches the actual Bimu.exe, drives its real WebView2 over a CI-only loopback debugger, queries native media/system commands and switches between notch and pill. Concurrent Win32 checks verify the UI message thread responds and the client area has no caption or border. Native screenshots are retained separately. This still does not replace testing real Spotify/YouTube sessions on the user's PC.
