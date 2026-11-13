@@ -14,6 +14,7 @@ public static class BimuNativeWindow {
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out Rect value);
   [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd,out Rect value);
   [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd,ref Point value);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd,StringBuilder value,int size);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd,StringBuilder value,int size);
   [DllImport("user32.dll",SetLastError=true)] static extern IntPtr SendMessageTimeout(IntPtr hwnd,uint message,UIntPtr wParam,IntPtr lParam,uint flags,uint timeout,out UIntPtr result);
   public static string Check(int pid) {
@@ -21,6 +22,8 @@ public static class BimuNativeWindow {
     EnumWindows((hwnd,arg)=>{
       uint owner;GetWindowThreadProcessId(hwnd,out owner);if(owner!=(uint)pid||!IsWindowVisible(hwnd))return true;
       var name=new StringBuilder(256);GetClassName(hwnd,name,256);if(name.ToString()=="Ghost"){error="Windows created a ghost window";return false;}
+      // WebView2 also owns tiny helper HWNDs; only Bimu is the app surface.
+      var title=new StringBuilder(256);GetWindowText(hwnd,title,256);if(title.ToString()!="Bimu")return true;
       UIntPtr result;if(SendMessageTimeout(hwnd,0,UIntPtr.Zero,IntPtr.Zero,2,250,out result)==IntPtr.Zero){error="UI message thread did not respond";return false;}
       Rect outer,client;Point origin=new Point();
       if(!GetWindowRect(hwnd,out outer)||!GetClientRect(hwnd,out client)||!ClientToScreen(hwnd,ref origin)){error="Could not read the actual native frame";return false;}
