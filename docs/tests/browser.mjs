@@ -83,8 +83,10 @@ try{
  assert.equal(await pill.locator('html').evaluate(el=>el.style.getPropertyValue('--notch-rgb')),'48,76,99')
  await page.locator('.custom-swatch input').evaluate(el=>{el.value='#f6edde';el.dispatchEvent(new Event('input',{bubbles:true}))})
  assert.equal(await pill.locator('html').getAttribute('data-theme'),'light')
- const handle=await pill.locator('.notch-move-button').boundingBox()
- await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2)
+ // Color buttons can trigger pointerleave and the delayed collapse. Reopen, then
+ // let Playwright wait for the actual handle to be visible and geometrically stable.
+ await page.getByRole('button',{name:'Probar la pill',exact:true}).click()
+ await pill.locator('.notch-move-button').hover()
  await page.mouse.down();await page.waitForTimeout(300)
  assert.equal(await pill.locator('html').getAttribute('data-notch'),'idle')
  const frameBox=await pillEl.boundingBox()
