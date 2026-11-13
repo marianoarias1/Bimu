@@ -18,7 +18,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
     const root=document.documentElement
     const previous=lastState.current
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches
-    const duration=previous===state&&state==='peek'&&lastTab.current!==tab&&!reduced?220:transitionDuration(previous,state,reduced)
+    const duration=pill&&dragging?transitionDuration(dragRef.current?.visualState,'idle',reduced):previous===state&&state==='peek'&&lastTab.current!==tab&&!reduced?220:transitionDuration(previous,state,reduced)
     lastState.current=state
     lastTab.current=tab
     root.dataset.mode=mode;root.dataset.edge=edge;root.dataset.notch=state;root.dataset.dragging=String(dragging);root.dataset.centered=String(pill?Math.abs(point.x-.5)<.0001&&Math.abs(point.y-.5)<.0001:Math.abs(fraction-.5)<.0001)
