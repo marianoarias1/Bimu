@@ -7,14 +7,14 @@ import assert from 'node:assert/strict'
 const port=5179,url=`http://127.0.0.1:${port}`
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(port),'--strictPort'],{stdio:'pipe'})
 let logs='';server.stdout.on('data',b=>logs=(logs+b).slice(-8000));server.stderr.on('data',b=>logs=(logs+b).slice(-8000))
-let browser
+let browser,activePage
 try{
  for(let i=0;i<100;i++){try{if((await fetch(url)).ok)break}catch{}await new Promise(r=>setTimeout(r,100));if(i===99)throw Error(logs)}
  browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{}),args:['--no-sandbox']})
  await mkdir('test-results/pill-devices',{recursive:true})
  async function pageFor(mode,theme,selected){
   const page=await browser.newPage({viewport:{width:1280,height:900},reducedMotion:'reduce'}),errors=[]
-  page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(String(e)))
+  activePage=page;page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(String(e)))
   await page.addInitScript(({mode,theme,selected})=>{
    const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGPo2RfwH4QZYAwAW8AKZWZiO2wAAAAASUVORK5CYII='
    localStorage.setItem('companion-dock',JSON.stringify({mode,edge:'top',monitorId:'Main:0:0',pillPositions:{'Main:0:0':{x:.5,y:.12}}}))
@@ -23,7 +23,7 @@ try{
    const monitor={name:'Main',position:{x:0,y:0},size:{width:1440,height:900},scaleFactor:1,workArea:{position:{x:0,y:0},size:{width:1440,height:860}}}
    let count=0;const callbacks={},devices=[{id:'a',name:'PC principal',favorite:true,connected:true,available:true,lastConnected:1700000000,management:true,pendingForget:false},{id:'b',name:'PC de trabajo',favorite:false,connected:false,available:true,lastConnected:1700000000,management:true,pendingForget:false}]
    const status={phase:'connected',peer:'PC principal',activeId:'a',devices,automatic:true,linked:true,localName:'Notebook',transferLimitMb:30,effectiveLimitMb:30,limitConfigured:false,isMain:false,usesMainLimit:false}
-   window.__bimuCalls=[];window.__bimuCursor={x:100,y:100}
+   window.isTauri=true;window.__bimuCalls=[];window.__bimuCursor={x:100,y:100}
    window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}}
    window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(cb){callbacks[++count]=cb;return count},unregisterCallback(id){delete callbacks[id]},async invoke(command,args={}){
     window.__bimuCalls.push({command,args})
@@ -50,7 +50,7 @@ try{
     return null
    }}
   },{mode,theme,selected})
-  await page.goto(url);await page.waitForFunction(()=>document.documentElement.dataset.mode)
+  await page.goto(url);await page.waitForFunction(()=>document.documentElement.dataset.mode);await page.waitForFunction(()=>window.__bimuCalls.some(call=>call.command==='media_state'))
   return {page,errors}
  }
  for(const mode of ['notch','pill'])for(const theme of ['dark','light'])for(const selected of ['music','shelf','clipboard','cleanup']){
@@ -66,7 +66,7 @@ try{
   await page.locator('.desktop').screenshot({path:`test-results/pill-devices/${mode}-${theme}-${selected}.png`})
   if(selected==='music'){
    if(mode==='pill'){
-    const rect=await surface.boundingBox();await page.evaluate(()=>{window.__bimuCursor={x:100,y:100}});await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(60);await page.evaluate(()=>{window.__bimuCursor={x:400,y:200}});await page.mouse.move(rect.x+rect.width/2+15,rect.y+rect.height/2+10);await page.waitForTimeout(120);await page.mouse.up();
+    const rect=await page.locator('.notch-move-button').boundingBox();await page.evaluate(()=>{window.__bimuCursor={x:100,y:100}});await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(60);await page.evaluate(()=>{window.__bimuCursor={x:400,y:200}});await page.mouse.move(rect.x+rect.width/2+15,rect.y+rect.height/2+10);await page.waitForTimeout(120);await page.mouse.up();
     const point=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('companion-dock'));return d.pillPositions[d.monitorId]});assert.ok(Math.abs(point.x-(.5+300/1440))<.01);assert.ok(Math.abs(point.y-(.12+100/860))<.01);
    }
    await page.getByRole('button',{name:'Abrir ajustes',exact:true}).click();await page.getByRole('button',{name:'Ajustes avanzados',exact:true}).click()
@@ -76,7 +76,8 @@ try{
    await page.getByRole('button',{name:'Marcar como favorito PC de trabajo',exact:true}).click();await page.getByRole('button',{name:'Quitar de favoritos PC de trabajo',exact:true}).waitFor()
    await page.locator('.pair-device-menu').last().locator('summary').click();await page.getByRole('button',{name:'Olvidar equipo',exact:true}).click();await page.getByRole('alertdialog').waitFor();await page.getByRole('button',{name:'Cancelar',exact:true}).click()
    await page.locator('.desktop').screenshot({path:`test-results/pill-devices/${mode}-${theme}-devices.png`});assert.deepEqual(errors,[])
+   await page.getByRole('button',{name:'+ Vincular otra PC',exact:true}).click();await page.getByRole('button',{name:'Generar código',exact:true}).waitFor();await page.getByRole('button',{name:'Volver',exact:true}).click();await page.getByLabel('Equipos guardados',{exact:true}).waitFor()
   }
   console.log('PASS',mode,theme,selected);await page.close()
  }
-}finally{await browser?.close();server.kill()}
+}catch(error){if(activePage&&!activePage.isClosed()){await activePage.screenshot({path:'test-results/pill-devices/failure.png',fullPage:true}).catch(()=>{});console.log('UI failure state:',await activePage.locator('body').innerText().catch(()=>''))}throw error}finally{await browser?.close();server.kill()}

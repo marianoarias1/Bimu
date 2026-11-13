@@ -9,8 +9,7 @@ export function pairingView(status,route='start',allowNew=false){
  if(route==='join')return 'join'
  if(route==='host')return 'create-error'
  if(status.linked)return 'reconnecting'
- if(route==='host')return 'create-error'
- return route==='join'?'join':'start'
+ return 'start'
 }
 export function canPair(address,code,peers,manual=false){
  return /^\d{6}$/.test(code)&&!!address.trim()&&(manual||peers.some(peer=>peer.address===address))

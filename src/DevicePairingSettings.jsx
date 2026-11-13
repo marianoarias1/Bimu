@@ -48,6 +48,7 @@ export function DevicePairingSettings(){
  useEffect(()=>{if(view!=='code')return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[view,status.code])
  useEffect(()=>{if(!editing&&status.transferLimitMb)setLimit(String(status.transferLimitMb))},[status.transferLimitMb,editing])
  useEffect(()=>{setConfirmForget(false);setEditing(false);setCopied(false);titleRef.current?.focus()},[view])
+ useEffect(()=>{if(status.phase==='connected'){setAdding(false);setRoute('start')}},[status.phase])
  useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(false),2000);return()=>clearTimeout(timer)},[copied])
  const run=async(command,args={})=>{
   if(!native||operation.current)return false
@@ -104,6 +105,7 @@ export function DevicePairingSettings(){
   {error&&<p className="pair-feedback pair-error" role="alert">{error}</p>}
   {!error&&status.phase==='error'&&status.message&&<p className="pair-feedback pair-error" role="alert">{status.message}</p>}
   {notice&&<p className="pair-feedback" role="status">{notice}</p>}
+  {adding&&view==='start'&&back}
   {view==='loading'?<div className="pair-progress" role="status"><LoaderCircle className="pair-spinner" size={18}/> Cargando dispositivos…</div>:view==='start'&&showKnown?devicesPanel:view==='start'?<>
    <p className="pair-helper">Ambas PCs deben estar en la misma red.</p>
    <div className="pair-choice"><Monitor size={25}/><div><h3>Empezar desde esta PC</h3><p>Generá un código para vincular tu otro equipo.</p><button type="button" className="pair-primary" disabled={!native||busy} onClick={host}>{busy?'Generando…':'Generar código'}</button></div></div>
