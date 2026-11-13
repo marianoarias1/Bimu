@@ -23,3 +23,13 @@
 #[path="../../src-tauri/src/bounded_io.rs"]pub mod bounded_io;
 
 #[path="../../src-tauri/src/random_core.rs"]pub mod random_core;
+
+#[path="../../src-tauri/src/trusted_devices_core.rs"]pub mod trusted_devices_core;
+
+#[path="../../src-tauri/src/connection_control.rs"]pub mod connection_control;
+
+#[path="../../src-tauri/src/trusted_devices_store.rs"]pub mod trusted_devices_store;
+
+#[path="../../src-tauri/src/thumbnail_pixels.rs"]pub mod thumbnail_pixels;
+
+#[path="../../src-tauri/src/media_selection.rs"]pub mod media_selection;

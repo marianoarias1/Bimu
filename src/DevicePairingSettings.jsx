@@ -1,6 +1,6 @@
 import React,{useCallback,useEffect,useId,useRef,useState} from 'react'
 import {invoke,isTauri} from '@tauri-apps/api/core'
-import {Link2,Monitor,Laptop,Unlink,Info,X,ChevronLeft,Copy,Check,RefreshCw,LoaderCircle,Clock3,Clipboard,Files} from 'lucide-react'
+import {Link2,Monitor,Laptop,Unlink,Info,X,ChevronLeft,Copy,Check,RefreshCw,LoaderCircle,Clock3,Clipboard,Files,Star,MoreHorizontal} from 'lucide-react'
 import {pairingView,canPair,remainingCodeTime,codeTimeLabel,limitSummary,validTransferLimit} from './device-pairing-ui'
 
 export function PairInfo({title,children,above=false}){
@@ -22,7 +22,7 @@ export function PairInfo({title,children,above=false}){
 
 export function DevicePairingSettings(){
  const native=isTauri()
- const [status,setStatus]=useState({phase:native?'loading':'idle'}),[route,setRoute]=useState('start')
+ const [status,setStatus]=useState({phase:native?'loading':'idle'}),[route,setRoute]=useState('start'),[adding,setAdding]=useState(false)
  const [address,setAddress]=useState(''),[code,setCode]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('')
  const [busy,setBusy]=useState(false),[peers,setPeers]=useState([]),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false),[manual,setManual]=useState(false)
  const [editing,setEditing]=useState(false),[limit,setLimit]=useState('30'),[copied,setCopied]=useState(false),[now,setNow]=useState(Date.now()),[confirmForget,setConfirmForget]=useState(false)
@@ -43,11 +43,13 @@ export function DevicePairingSettings(){
   catch(e){if(alive.current&&token===epoch.current){setError(String(e));setSearched(true)}}
   finally{scanning.current=false;if(alive.current)setSearching(false)}
  },[native])
- const view=pairingView(status,route),summary=limitSummary(status),remaining=remainingCodeTime(status.codeExpiresAt,now)
+ const view=pairingView(status,route,adding),summary=limitSummary(status),remaining=remainingCodeTime(status.codeExpiresAt,now)
  useEffect(()=>{if(view!=='join')return;discover();const timer=setInterval(discover,4000);return()=>clearInterval(timer)},[discover,view])
  useEffect(()=>{if(view!=='code')return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[view,status.code])
  useEffect(()=>{if(!editing&&status.transferLimitMb)setLimit(String(status.transferLimitMb))},[status.transferLimitMb,editing])
  useEffect(()=>{setConfirmForget(false);setEditing(false);setCopied(false);titleRef.current?.focus()},[view])
+ useEffect(()=>{if(status.phase==='connected'){setAdding(false);setRoute('start')}},[status.phase])
+ useEffect(()=>{const close=e=>{for(const menu of document.querySelectorAll('.pair-device-menu[open]'))if(e.type==='keydown'?e.key==='Escape':!menu.contains(e.target)){menu.open=false;if(e.type==='keydown')menu.querySelector('summary')?.focus()}};document.addEventListener('pointerdown',close);document.addEventListener('keydown',close);return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',close)}},[])
  useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(false),2000);return()=>clearTimeout(timer)},[copied])
  const run=async(command,args={})=>{
   if(!native||operation.current)return false
@@ -62,15 +64,15 @@ export function DevicePairingSettings(){
  }
  const goBack=async()=>{
   if(['waiting','connecting'].includes(status.phase)&&!await run('device_pairing_disconnect'))return
-  epoch.current++;setRoute('start');setAddress('');setCode('');setManual(false);setError('');setNotice('')
+  epoch.current++;setAdding(false);setRoute('start');setAddress('');setCode('');setManual(false);setError('');setNotice('')
  }
  const host=()=>{setRoute('host');run('device_pairing_host')}
  const join=()=>{epoch.current++;setError('');setNotice('');setRoute('join')}
  const copyCode=async()=>{try{await navigator.clipboard.writeText(status.code||'');if(alive.current)setCopied(true)}catch{if(alive.current)setError('No se pudo copiar el código. Podés ingresarlo manualmente en la otra PC.')}}
- const submit=async e=>{e.preventDefault();if(canPair(address,code,peers,manual))await run('device_pairing_join',{address:address.trim(),code})}
+ const submit=async e=>{e.preventDefault();if(canPair(address,code,peers,manual))await run('device_pairing_join',{address:address.trim(),code,management:peers.find(p=>p.address===address)?.management||false})}
  const saveLimit=async e=>{e.preventDefault();if(validTransferLimit(limit)&&await run('device_pairing_set_limit',{mb:Number(limit)})){setEditing(false);setNotice('Límite guardado.')}}
  const restoreLimit=async()=>{if(await run('device_pairing_set_limit',{mb:null})){setLimit('30');setEditing(false);setNotice('Se restableció el límite por defecto.')} }
- const forget=async()=>{if(await run('device_pairing_forget')){setRoute('start');setAddress('');setCode('');setPeers([]);setManual(false)}}
+ const forget=async()=>{if(await run('device_pairing_forget',{id:confirmForget?.id})){setRoute('start');setAddress('');setCode('');setPeers([]);setManual(false);setConfirmForget(false)}else setConfirmForget(false)}
  const connected=view==='connected',linkedView=connected||view==='reconnecting'
  const transferSettings=<div className="pair-limit-card">
   <div className="pair-limit-heading"><strong>{editing&&summary.inherited?'Tu preferencia':'Máximo por envío'}</strong><PairInfo title="Límite de archivos" above><p>De 1 a 250 MB por selección, incluyendo el total de una carpeta. Por defecto: 30 MB.</p><p>Si la PC que generó el código guardó un límite, ambas lo usan mientras estén conectadas. Si no, cada una usa el suyo al enviar.</p><p>Tu preferencia se conserva al desconectar. Restablecer elimina tu personalización. El ajuste no reserva memoria.</p><p>Las imágenes copiadas como imagen tienen un límite independiente.</p></PairInfo></div>
@@ -81,6 +83,24 @@ export function DevicePairingSettings(){
   </form>}
  </div>
  const connectionInfo=<PairInfo title="Sobre la conexión"><p>Ambas PCs deben estar en la misma red local.</p><p>Se sincronizan el portapapeles y los elementos de Archivos a mano. Los equipos vinculados se reconectan al abrir Bimu.</p><p>En Archivos a mano, los archivos se descargan al abrirlos desde el otro equipo.</p></PairInfo>
+ const connectKnown=async id=>{if(status.phase==='connected'&&!await run('device_pairing_disconnect'))return;if(await run('device_pairing_connect',{id})){setRoute('start');setNotice('Se conectará cuando ambas PCs estén disponibles.')}}
+ const addKnown=async()=>{if(['connected','connecting','waiting'].includes(status.phase)&&!await run('device_pairing_disconnect'))return;setAdding(true);setRoute('choose');setError('');setNotice('')}
+ const known=status.devices||[],showKnown=known.length>0&&route==='start'
+ const devicesPanel=<>
+  <p className="pair-helper">Esta PC: {status.localName||'Este equipo'}</p>
+  <div className="pair-saved-list" aria-label="Equipos guardados">{known.map(device=><article className="pair-saved-device" key={device.id}>
+   <Monitor size={23}/><div className="pair-saved-name"><strong>{device.name}</strong><small>{device.pendingForget?'Vínculo revocado · aviso pendiente':device.connected?'Conectada':device.available?'Disponible':device.lastConnected?`Última conexión: ${new Date(device.lastConnected*1000).toLocaleDateString()}`:'Sin conexión'}</small></div>
+   {!device.pendingForget&&<button className="pair-icon-button pair-favorite" aria-label={device.favorite?'Quitar de favoritos '+device.name:'Marcar como favorito '+device.name} aria-pressed={device.favorite} disabled={busy} onClick={()=>run('device_pairing_favorite',{id:device.favorite?null:device.id})}><Star size={16} fill={device.favorite?'currentColor':'none'}/></button>}
+   {!device.pendingForget&&<button disabled={busy||!native} onClick={()=>device.connected?run('device_pairing_disconnect'):connectKnown(device.id)}>{device.connected?'Desconectar':'Conectar'}</button>}
+   {!device.pendingForget&&<details className="pair-device-menu"><summary aria-label={'Opciones de '+device.name}><MoreHorizontal size={17}/></summary><button className="pair-danger pair-forget-action" disabled={busy} onClick={e=>{e.currentTarget.closest('details').open=false;setConfirmForget(device)}}><Unlink size={14}/>Olvidar equipo</button></details>}
+  </article>)}</div>
+  <div className="pair-add-device">
+   <button className="pair-primary" disabled={!native||busy} onClick={addKnown}>+ Vincular otra PC</button>
+   <small className="pair-helper">Tu favorito tiene prioridad al reconectar. Solo se sincroniza con el equipo conectado.</small>
+  </div>
+  {connected&&<div className="pair-sync-row"><span>Sincronización activa</span><span aria-label="Portapapeles y archivos"><Clipboard size={16}/><Files size={16}/></span></div>}
+  {transferSettings}
+ </>
  const back=<button type="button" className="pair-back" disabled={busy} onClick={goBack}><ChevronLeft size={14}/> Volver</button>
  const heading=text=><h2 ref={titleRef} tabIndex={-1}>{text}</h2>
  return <section className="behavior-card glass-card device-pairing pairing-flow" aria-label="Vincular computadoras">
@@ -88,7 +108,8 @@ export function DevicePairingSettings(){
   {error&&<p className="pair-feedback pair-error" role="alert">{error}</p>}
   {!error&&status.phase==='error'&&status.message&&<p className="pair-feedback pair-error" role="alert">{status.message}</p>}
   {notice&&<p className="pair-feedback" role="status">{notice}</p>}
-  {view==='loading'?<div className="pair-progress" role="status"><LoaderCircle className="pair-spinner" size={18}/> Cargando dispositivos…</div>:view==='start'?<>
+  {adding&&view==='start'&&back}
+  {view==='loading'?<div className="pair-progress" role="status"><LoaderCircle className="pair-spinner" size={18}/> Cargando dispositivos…</div>:view==='start'&&showKnown?devicesPanel:view==='start'?<>
    <p className="pair-helper">Ambas PCs deben estar en la misma red.</p>
    <div className="pair-choice"><Monitor size={25}/><div><h3>Empezar desde esta PC</h3><p>Generá un código para vincular tu otro equipo.</p><button type="button" className="pair-primary" disabled={!native||busy} onClick={host}>{busy?'Generando…':'Generar código'}</button></div></div>
    <div className="pair-choice"><Laptop size={25}/><div><h3>Ya tengo un código</h3><p>Buscá la PC que lo está mostrando.</p><button type="button" disabled={!native||busy} onClick={join}>Conectar con otra PC</button></div></div>
@@ -113,12 +134,12 @@ export function DevicePairingSettings(){
     <div className="pair-join-footer"><button type="button" className="pair-text-button" disabled={searching||busy} onClick={()=>{setError('');discover()}}><RefreshCw size={13} className={searching?'pair-spinner':''}/>{searching?'Buscando…':'Actualizar búsqueda'}</button><button type="button" className="pair-text-button" aria-expanded={manual} onClick={()=>setManual(v=>!v)}>¿No aparece tu PC?</button></div>
     {manual&&<div className="pair-manual"><p>Revisá que ambas PCs estén en la misma red y que la otra esté mostrando un código. Si no aparece, ingresá su dirección local.</p><label className="pair-field">Dirección local<input value={address} onChange={e=>setAddress(e.target.value)} placeholder="192.168.1.10:12345" autoComplete="off"/></label></div>}
    </form>
-  </>:linkedView?<>
-   <div className="pair-connected-card"><Laptop size={27}/><div><h3>{status.peer||'Tu equipo vinculado'}</h3><span className="pair-connection-label">{connected?<><span className="pair-status-dot"/> Conectada</>:<><LoaderCircle size={13} className="pair-spinner"/> Buscando conexión…</>}</span><small>{connected?'Se reconecta automáticamente':'Se conectará cuando ambas PCs estén disponibles.'}</small></div></div>
-   {connected&&<div className="pair-sync-row"><span>Sincronización activa</span><span aria-label="Portapapeles y archivos"><Clipboard size={16}/><Files size={16}/></span></div>}
-   {status.message&&status.phase!=='error'&&<p className="pair-feedback" role="status">{status.message}</p>}
-   {transferSettings}
-   {confirmForget?<div className="pair-forget-confirm"><p>¿Desvincular este equipo? Para volver a conectarlo necesitarás un código nuevo.</p><div><button type="button" disabled={busy} onClick={()=>setConfirmForget(false)}>Cancelar</button><button type="button" className="pair-danger" disabled={busy} onClick={forget}>Desvincular</button></div></div>:<button type="button" className="pair-danger pair-forget" disabled={busy} onClick={()=>setConfirmForget(true)}><Unlink size={13}/> Desvincular equipo</button>}
-  </>:view==='connecting'?<><div className="pair-progress-stage">{heading('Conectando los equipos')}<div className="pair-progress" role="status"><LoaderCircle size={20} className="pair-spinner"/><span>{status.message||'Verificando el código…'}</span></div></div><button type="button" disabled={busy} onClick={goBack}>Cancelar</button></>:<>{back}<div className="pair-progress-stage">{heading(busy?'Generando código…':'Generar un código')}<p className="pair-helper">Ambas PCs deben estar en la misma red.</p><button type="button" className="pair-primary" disabled={!native||busy} onClick={host}>{busy?<><LoaderCircle size={16} className="pair-spinner"/> Generando…</>:'Generar código'}</button></div></>}
+  </>:linkedView?devicesPanel:view==='connecting'?<><div className="pair-progress-stage">{heading('Conectando los equipos')}<div className="pair-progress" role="status"><LoaderCircle size={20} className="pair-spinner"/><span>{status.message||'Verificando el código…'}</span></div></div><button type="button" disabled={busy} onClick={goBack}>Cancelar</button></>:<>{back}<div className="pair-progress-stage">{heading(busy?'Generando código…':'Generar un código')}<p className="pair-helper">Ambas PCs deben estar en la misma red.</p><button type="button" className="pair-primary" disabled={!native||busy} onClick={host}>{busy?<><LoaderCircle size={16} className="pair-spinner"/> Generando…</>:'Generar código'}</button></div></>}
+  {confirmForget&&<ForgetDeviceDialog device={confirmForget} busy={busy} onCancel={()=>setConfirmForget(false)} onConfirm={forget}/>}
  </section>
+}
+function ForgetDeviceDialog({device,busy,onCancel,onConfirm}){
+ const cancel=useRef(null),confirm=useRef(null),title=useId()
+ useEffect(()=>{const previous=document.activeElement;cancel.current?.focus();return()=>previous?.focus?.()},[])
+ return <div className="pair-dialog-backdrop" onKeyDown={e=>{if(e.key==='Escape'&&!busy){e.preventDefault();onCancel()}if(e.key==='Tab'){const target=e.shiftKey?(document.activeElement===cancel.current?confirm.current:cancel.current):(document.activeElement===confirm.current?cancel.current:confirm.current);e.preventDefault();target?.focus()}}}><section className="pair-dialog" role="alertdialog" aria-modal="true" aria-labelledby={title}><h3 id={title}>¿Olvidar {device.name}?</h3><p>El vínculo se eliminará también en la otra PC cuando esté disponible. Para volver a conectar vas a necesitar un código nuevo.</p><div><button ref={cancel} disabled={busy} onClick={onCancel}>Cancelar</button><button ref={confirm} className="pair-danger" disabled={busy} onClick={onConfirm}>{busy?'Olvidando…':'Olvidar equipo'}</button></div></section></div>
 }

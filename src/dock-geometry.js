@@ -71,3 +71,27 @@ export function desktopEnvelope(area,edge,size,scale,fraction){
  const vertical=isLateral(edge)?Math.round(12*scale):0,y=Math.max(area.y,frame.y-vertical),bottom=Math.min(area.y+area.height,frame.y+frame.height+vertical)
  return {...frame,x,y,width:right-x,height:bottom-y}
 }
+
+// Floating mode keeps one anchor and native envelope for every visual state.
+export function pillSize(state,size='M',tab='home'){
+ if(['idle','anticipate','retracted'].includes(state))return ({S:[82,30],M:[94,34],L:[106,38]}[size]||[94,34])
+ return notchSize('top',state,size,tab)
+}
+export function pillPosition(area,width,height,point={x:.5,y:.1},scale=1){
+ const margin=6*scale,anchorX=area.x+area.width*clamp(Number.isFinite(point.x)?point.x:.5,0,1),anchorY=area.y+area.height*clamp(Number.isFinite(point.y)?point.y:.1,0,1)
+ return {x:Math.round(clamp(anchorX-width/2,area.x+margin,Math.max(area.x+margin,area.x+area.width-width-margin))),y:Math.round(clamp(anchorY-height/2,area.y+margin,Math.max(area.y+margin,area.y+area.height-height-margin)))}
+}
+// Cursor and work area are physical pixels; only the compact pill limits the drag.
+export function pillDragPosition(area,size,scale,cursor,offset={x:0,y:0}){
+ const [w,h]=pillSize('idle',size),width=Math.min(Math.round(w*scale),Math.max(1,area.width-12*scale)),height=Math.min(Math.round(h*scale),Math.max(1,area.height-12*scale))
+ const position=pillPosition(area,width,height,{x:(cursor.x+offset.x-area.x)/area.width,y:(cursor.y+offset.y-area.y)/area.height},scale)
+ return {...position,width,height,center:{x:position.x+width/2,y:position.y+height/2}}
+}
+export function pillEnvelope(area,size,scale,point){
+ const frame=[['idle','home'],['peek','lyrics-volume'],['peek','cleanup-details'],['open','home'],['open','settings']].map(([state,tab])=>{const [w,h]=pillSize(state,size,tab),width=Math.min(Math.round(w*scale),Math.max(1,area.width-12*scale)),height=Math.min(Math.round(h*scale),Math.max(1,area.height-12*scale));return {...pillPosition(area,width,height,point,scale),width,height}}).reduce(unionRects)
+ // Keep the comet glow inside the native frame along all four free edges.
+ const pad=Math.ceil(6*scale),x=Math.max(area.x,frame.x-pad),y=Math.max(area.y,frame.y-pad),right=Math.min(area.x+area.width,frame.x+frame.width+pad),bottom=Math.min(area.y+area.height,frame.y+frame.height+pad)
+ return {x,y,width:right-x,height:bottom-y}
+}
+
+export function cleanPillPositions(value){return Object.fromEntries(Object.entries(value&&typeof value==='object'?value:{}).slice(0,16).filter(([id,p])=>id.length<=256&&Number.isFinite(p?.x)&&Number.isFinite(p?.y)).map(([id,p])=>[id,{x:clamp(p.x,0,1),y:clamp(p.y,0,1)}]))}

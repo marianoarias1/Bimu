@@ -11,16 +11,19 @@ const MAX_WIRE: usize = crate::transfer_limits::wire_bytes(crate::transfer_limit
 const CHUNK: usize = 32*1024;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ClipboardPayload { Limits{mb:usize,configured:bool}, Text(String), Image { width:usize, height:usize, rgba:Vec<u8> }, Files(Vec<PathBuf>), FileBundle(FileBundle), ShelfCatalog(Vec<ShelfMetadata>), ShelfRequest{id:String,token:u64}, ShelfReply{id:String,token:u64,bundle:Option<FileBundle>,error:Option<String>} }
+pub enum ClipboardPayload { ConnectionControl{action:String}, PreviewRequest{id:String,token:u64}, PreviewReply{id:String,token:u64,preview:Option<String>}, Limits{mb:usize,configured:bool}, Text(String), Image { width:usize, height:usize, rgba:Vec<u8> }, Files(Vec<PathBuf>), FileBundle(FileBundle), ShelfCatalog(Vec<ShelfMetadata>), ShelfRequest{id:String,token:u64}, ShelfReply{id:String,token:u64,bundle:Option<FileBundle>,error:Option<String>} }
 #[derive(Serialize,Deserialize)]
 #[serde(tag="kind", rename_all="snake_case", deny_unknown_fields)]
-enum WirePayload { Limits { mb:usize, configured:bool }, Text { text:String }, Image { width:usize, height:usize, rgba:String }, Files { bundle:FileBundle }, ShelfCatalog { items:Vec<ShelfMetadata> }, ShelfRequest { id:String, token:u64 }, ShelfReply { id:String, token:u64, bundle:Option<FileBundle>, error:Option<String> } }
+enum WirePayload { ConnectionControl{action:String}, PreviewRequest{id:String,token:u64}, PreviewReply{id:String,token:u64,preview:Option<String>}, Limits { mb:usize, configured:bool }, Text { text:String }, Image { width:usize, height:usize, rgba:String }, Files { bundle:FileBundle }, ShelfCatalog { items:Vec<ShelfMetadata> }, ShelfRequest { id:String, token:u64 }, ShelfReply { id:String, token:u64, bundle:Option<FileBundle>, error:Option<String> } }
 fn image_size(width:usize,height:usize)->Option<usize>{
  if width==0||height==0||width>16384||height>16384{return None}
  width.checked_mul(height)?.checked_mul(4).filter(|n|*n<=MAX_IMAGE)
 }
 fn encode(payload:ClipboardPayload)->Result<Vec<u8>,String>{
  let wire=match payload{
+  ClipboardPayload::ConnectionControl{action} if matches!(action.as_str(),"disconnect"|"disconnected")=>WirePayload::ConnectionControl{action},
+  ClipboardPayload::PreviewRequest{id,token} if crate::shelf_shared::valid_id(&id)=>WirePayload::PreviewRequest{id,token},
+  ClipboardPayload::PreviewReply{id,token,preview} if crate::shelf_shared::valid_id(&id)&&preview.as_ref().map(|p|crate::shelf_shared::valid_preview(p)).unwrap_or(true)=>WirePayload::PreviewReply{id,token,preview},
   ClipboardPayload::Limits{mb,configured}=>{crate::transfer_limits::validate(mb)?;WirePayload::Limits{mb,configured}},
   ClipboardPayload::Text(text) if !text.is_empty()&&text.len()<=MAX_TEXT=>WirePayload::Text{text},
   ClipboardPayload::Image{width,height,rgba} if image_size(width,height)==Some(rgba.len())=>WirePayload::Image{width,height,rgba:STANDARD.encode(rgba)},
@@ -36,6 +39,9 @@ fn encode(payload:ClipboardPayload)->Result<Vec<u8>,String>{
 fn decode(data:&[u8])->Result<ClipboardPayload,String>{
  let wire:WirePayload=serde_json::from_slice(data).map_err(|_|"Formato del portapapeles inválido")?;
  match wire{
+  WirePayload::ConnectionControl{action} if matches!(action.as_str(),"disconnect"|"disconnected")=>Ok(ClipboardPayload::ConnectionControl{action}),
+  WirePayload::PreviewRequest{id,token} if crate::shelf_shared::valid_id(&id)=>Ok(ClipboardPayload::PreviewRequest{id,token}),
+  WirePayload::PreviewReply{id,token,preview} if crate::shelf_shared::valid_id(&id)&&preview.as_ref().map(|p|crate::shelf_shared::valid_preview(p)).unwrap_or(true)=>Ok(ClipboardPayload::PreviewReply{id,token,preview}),
   WirePayload::Limits{mb,configured}=>{crate::transfer_limits::validate(mb)?;Ok(ClipboardPayload::Limits{mb,configured})},
   WirePayload::Text{text} if !text.is_empty()&&text.len()<=MAX_TEXT=>Ok(ClipboardPayload::Text(text)),
   WirePayload::Files{bundle}=>Ok(ClipboardPayload::FileBundle(bundle)),
@@ -85,6 +91,10 @@ fn receive_payload(channel:&mut SecureChannel,file_limit:usize)->Result<Option<C
 }
 #[cfg(test)] mod tests{
  use super::*;use crate::pairing_core::Role;use crate::pairing_transport::pair;use std::{net::{TcpListener,TcpStream},thread};
+ #[test]fn control_and_preview_messages_are_bounded_and_round_trip(){
+  for payload in [ClipboardPayload::ConnectionControl{action:"disconnect".into()},ClipboardPayload::ConnectionControl{action:"disconnected".into()},ClipboardPayload::PreviewRequest{id:"a".repeat(64),token:42},ClipboardPayload::PreviewReply{id:"a".repeat(64),token:42,preview:None}]{assert_eq!(decode(&encode(payload.clone()).unwrap()).unwrap(),payload)}
+  assert!(decode(br#"{"kind":"connection_control","action":"resume"}"#).is_err());assert!(decode(br#"{"kind":"preview_request","id":"../file","token":1}"#).is_err());
+ }
  #[test] fn image_wire_format_stays_compatible_across_base64_versions(){
   // A fixed wire fixture is exercised by the app (new base64) and native-tests
   // (the previous base64), so an encoder/decoder changing together cannot hide drift.
@@ -121,11 +131,11 @@ fn receive_payload(channel:&mut SecureChannel,file_limit:usize)->Result<Option<C
   let unique=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();let dir=std::env::temp_dir().join(format!("bimu-shelf-wire-{}-{unique}",std::process::id()));fs::create_dir(&dir).unwrap();fs::write(dir.join("trabajo.pdf"),b"documento").unwrap();
   let bundle=crate::clipboard_files::pack(&[dir.join("trabajo.pdf")]).unwrap();let id="a".repeat(64);let sent_id=id.clone();
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();
-  let host=thread::spawn(move||{let(s,_)=listener.accept().unwrap();let mut channel=pair(s,Role::Host,"012345").unwrap();let item=ShelfMetadata{id:sent_id.clone(),name:"trabajo.pdf".into(),kind:"file".into(),available:true};send_turn(&mut channel,Some(ClipboardPayload::ShelfCatalog(vec![item]))).unwrap();assert_eq!(receive_turn(&mut channel).unwrap(),Some(ClipboardPayload::ShelfRequest{id:sent_id.clone(),token:42}));send_turn(&mut channel,Some(ClipboardPayload::ShelfReply{id:sent_id,token:42,bundle:Some(bundle),error:None})).unwrap();});
+  let host=thread::spawn(move||{let(s,_)=listener.accept().unwrap();let mut channel=pair(s,Role::Host,"012345").unwrap();let item=ShelfMetadata{revision:None,id:sent_id.clone(),name:"trabajo.pdf".into(),kind:"file".into(),available:true};send_turn(&mut channel,Some(ClipboardPayload::ShelfCatalog(vec![item]))).unwrap();assert_eq!(receive_turn(&mut channel).unwrap(),Some(ClipboardPayload::ShelfRequest{id:sent_id.clone(),token:42}));send_turn(&mut channel,Some(ClipboardPayload::ShelfReply{id:sent_id,token:42,bundle:Some(bundle),error:None})).unwrap();});
   let mut channel=pair(TcpStream::connect(addr).unwrap(),Role::Client,"012345").unwrap();assert!(matches!(receive_turn(&mut channel).unwrap(),Some(ClipboardPayload::ShelfCatalog(_))));send_turn(&mut channel,Some(ClipboardPayload::ShelfRequest{id:id.clone(),token:42})).unwrap();let reply=receive_turn(&mut channel).unwrap().unwrap();let ClipboardPayload::ShelfReply{id:response_id,token,bundle:Some(bundle),error:None}=reply else{panic!("expected shelf reply")};assert_eq!(response_id,id);assert_eq!(token,42);assert_eq!(bundle.single_root(),Some("trabajo.pdf"));let destination=dir.join("received");let paths=crate::clipboard_files::unpack(&bundle,&destination).unwrap();assert_eq!(fs::read(&paths[0]).unwrap(),b"documento");host.join().unwrap();fs::remove_dir_all(dir).unwrap();
  }
  #[test] fn shelf_messages_validate_metadata_and_request_ids(){
-  let item=ShelfMetadata{id:"a".repeat(64),name:"guía.pdf".into(),kind:"file".into(),available:true};
+  let item=ShelfMetadata{revision:None,id:"a".repeat(64),name:"guía.pdf".into(),kind:"file".into(),available:true};
   let message=ClipboardPayload::ShelfCatalog(vec![item]);
   assert_eq!(decode(&encode(message.clone()).unwrap()).unwrap(),message);
   let request=ClipboardPayload::ShelfRequest{id:"a".repeat(64),token:17};
@@ -184,7 +194,7 @@ fn receive_payload(channel:&mut SecureChannel,file_limit:usize)->Result<Option<C
   let host=thread::spawn(move||{
    let(s,_)=listener.accept().unwrap();let mut c=pair(s,Role::Host,"123456").unwrap();
    c.send(transfer_limits::hello("Principal",250,true).unwrap().as_bytes()).unwrap();
-   send_turn(&mut c,Some(ClipboardPayload::ShelfCatalog(vec![ShelfMetadata{id:host_id.clone(),name:"Proyecto70".into(),kind:"folder".into(),available:true}]))).unwrap();
+   send_turn(&mut c,Some(ClipboardPayload::ShelfCatalog(vec![ShelfMetadata{revision:None,id:host_id.clone(),name:"Proyecto70".into(),kind:"folder".into(),available:true}]))).unwrap();
    assert_eq!(receive_turn_with_limit(&mut c,250*MIB).unwrap(),Some(ClipboardPayload::ShelfRequest{id:host_id.clone(),token:7}));
    send_turn(&mut c,Some(ClipboardPayload::ShelfReply{id:host_id,token:7,bundle:Some(bundle),error:None})).unwrap();
    assert_eq!(receive_turn_with_limit(&mut c,250*MIB).unwrap(),None);

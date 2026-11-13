@@ -1,17 +1,9 @@
 //! Persistent credential protected for the current Windows user with DPAPI.
-use serde::{Serialize,Deserialize};
-use sha2::{Digest,Sha256};
 use tauri::{AppHandle,Manager};
 use crate::pairing_core::Role;
 use crate::pairing_transport::SecureChannel;
 
-#[derive(Clone,Serialize,Deserialize)]
-pub struct Trust { pub key:[u8;32], pub host:bool }
-impl Trust {
- pub fn role(&self)->Role { if self.host {Role::Host} else {Role::Client} }
- pub fn tag(&self)->String { let mut h=Sha256::new();h.update(b"bimu-trusted-discovery-v1");h.update(self.key);let x=h.finalize();x[..16].iter().map(|b|format!("{b:02x}")).collect() }
-}
-fn path(app:&AppHandle)->Result<std::path::PathBuf,String>{Ok(app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?.join("linked-device.dat"))}
+pub use crate::trusted_devices_core::{Trust,DeviceBook};
 #[cfg(windows)]
 fn protect(data:&[u8], encrypt:bool)->Result<Vec<u8>,String>{
  use std::ffi::c_void;
@@ -24,9 +16,15 @@ fn protect(data:&[u8], encrypt:bool)->Result<Vec<u8>,String>{
  let result=unsafe{std::slice::from_raw_parts(output.data,output.size as usize).to_vec()};unsafe{LocalFree(output.data.cast());}Ok(result)
 }
 #[cfg(not(windows))] fn protect(_: &[u8],_:bool)->Result<Vec<u8>,String>{Err("La vinculación persistente requiere Windows".into())}
-pub fn load(app:&AppHandle)->Result<Option<Trust>,String>{let path=path(app)?;let bytes=match crate::bounded_io::read_limited(&path,4096){Ok(b)=>b,Err(e) if e.kind()==std::io::ErrorKind::NotFound=>return Ok(None),Err(_)=>return Err("No se pudo leer la vinculación".into())};if bytes.len()>4096{return Err("Vinculación inválida".into())}let data=protect(&bytes,false)?;let value:Trust=serde_json::from_slice(&data).map_err(|_|"Vinculación inválida")?;Ok(Some(value))}
-pub fn save(app:&AppHandle,trust:&Trust)->Result<(),String>{let path=path(app)?;let data=serde_json::to_vec(trust).map_err(|_|"No se pudo guardar la vinculación")?;let bytes=protect(&data,true)?;std::fs::create_dir_all(path.parent().ok_or("Carpeta inválida")?).map_err(|_|"No se pudo crear la carpeta de Bimu")?;crate::config_migration::write_atomic(&path,&bytes).map_err(|_|"No se pudo guardar la vinculación".into())}
-pub fn forget(app:&AppHandle)->Result<(),String>{match std::fs::remove_file(path(app)?){Ok(())=>Ok(()),Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(()),Err(_)=>Err("No se pudo eliminar la vinculación".into())}}
+static BOOK_LOCK:std::sync::Mutex<()>=std::sync::Mutex::new(());
+fn read_book(app:&AppHandle)->Result<DeviceBook,String>{crate::trusted_devices_store::read(&app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?,protect)}
+fn write_book(app:&AppHandle,book:&DeviceBook)->Result<(),String>{crate::trusted_devices_store::write(&app.path().app_data_dir().map_err(|_|"No se pudo ubicar la carpeta de Bimu")?,book,protect)}
+pub fn book(app:&AppHandle)->Result<DeviceBook,String>{let _guard=BOOK_LOCK.lock().map_err(|_|"Registro de equipos ocupado")?;read_book(app)}
+pub fn edit(app:&AppHandle,f:impl FnOnce(&mut DeviceBook)->Result<(),String>)->Result<(),String>{let _guard=BOOK_LOCK.lock().map_err(|_|"Registro de equipos ocupado")?;let mut b=read_book(app)?;f(&mut b)?;write_book(app,&b)}
+pub fn load(app:&AppHandle)->Result<Option<Trust>,String>{Ok(book(app)?.selected().map(|d|d.trust.clone()))}
+pub fn save(app:&AppHandle,trust:&Trust)->Result<(),String>{edit(app,|b|b.remember(trust.clone()))}
+pub fn forget(app:&AppHandle)->Result<(),String>{edit(app,|b|{if let Some(d)=b.selected(){let id=d.id.clone();b.revoke(&id,false)?;}Ok(())})}
+pub fn remove_failed(app:&AppHandle,id:&str)->Result<(),String>{edit(app,|b|{if b.devices.iter().any(|d|d.id==id&&(d.last_connected>0||d.revoked)){return Ok(())}b.devices.retain(|d|d.id!=id);if b.selected.as_deref()==Some(id){b.selected=None}if b.favorite.as_deref()==Some(id){b.favorite=None}Ok(())})}
 pub fn establish(channel:&mut SecureChannel,role:Role,store:impl Fn(&Trust)->Result<(),String>,rollback:impl Fn(&Trust))->Result<(),String>{
  match role {
   Role::Host=>{
@@ -55,4 +53,9 @@ pub fn establish(channel:&mut SecureChannel,role:Role,store:impl Fn(&Trust)->Res
   assert!(establish(&mut c,Role::Client,move|t|{*for_store.lock().unwrap()=Some(t.key);Ok(())},move|t|{let mut value=for_rollback.lock().unwrap();if *value==Some(t.key){*value=None}}).is_err());
   assert!(saved.lock().unwrap().is_none());host.join().unwrap();
  }
+}
+
+#[cfg(all(test,windows))]mod protection_tests{
+ use super::*;
+ #[test]fn device_credentials_are_encrypted_and_authenticated_by_windows(){let bytes=b"bimu protected device test credential";let encrypted=protect(bytes,true).unwrap();assert_ne!(encrypted,bytes);assert_eq!(protect(&encrypted,false).unwrap(),bytes);let mut damaged=encrypted;let at=damaged.len()/2;damaged[at]^=1;assert!(protect(&damaged,false).is_err());}
 }

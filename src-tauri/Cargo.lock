@@ -2383,7 +2383,7 @@ dependencies = [
 
 [[package]]
 name = "mascota-companero"
-version = "0.55.17"
+version = "0.55.18"
 dependencies = [
  "arboard",
  "base64 0.23.1",

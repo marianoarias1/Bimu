@@ -29,3 +29,12 @@ export function cometHead(elapsed,duration=4200){
  if(!Number.isFinite(elapsed)||!Number.isFinite(duration)||duration<=0)return -.02
  return ((Math.max(0,elapsed)%duration)/duration)*1.4-.02
 }
+
+export function pillContour(width,height,radius=height/2){
+ if(!Number.isFinite(width)||!Number.isFinite(height)||width<=2||height<=2)return null
+ const r=Math.max(1,Math.min(radius,width/2,height/2)),x=width-1,y=height-1
+ return {d:`M ${r} 1 H ${width-r} A ${r-1} ${r-1} 0 0 1 ${x} ${r} V ${height-r} A ${r-1} ${r-1} 0 0 1 ${width-r} ${y} H ${r} A ${r-1} ${r-1} 0 0 1 1 ${height-r} V ${r} A ${r-1} ${r-1} 0 0 1 ${r} 1 Z`,transform:'',length:2*(width+height-4*r)+2*Math.PI*r,span:width,depth:height}
+}
+export function loopCometSegments(head,tail=.36,count=24){
+ return Array.from({length:count},(_,i)=>{const start=((head-tail+i*tail/count)%1+1)%1,t=(i+1)/count;return {start,end:start+tail/count,width:.25+1.85*t*t,opacity:t**1.65}})
+}

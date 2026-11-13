@@ -1,0 +1,42 @@
+import {test} from 'node:test'
+import assert from 'node:assert/strict'
+import {pillSize,pillPosition,pillEnvelope,pillDragPosition,cleanPillPositions} from '../src/dock-geometry.js'
+import {pillContour,loopCometSegments} from '../src/music-edge.js'
+import {pairingView} from '../src/device-pairing-ui.js'
+test('floating frame contains compact, hover and settings on negative/DPI monitors',()=>{
+ for(const scale of [1,1.25,2])for(const area of [{x:-1920,y:-180,width:1920,height:1080},{x:2560,y:0,width:2560,height:1440}])for(const point of [{x:0,y:0},{x:1,y:1},{x:.5,y:.5},{x:.2,y:.85}]){
+  const frame=pillEnvelope(area,'M',scale,point)
+  for(const [state,tab]of [['idle','home'],['peek','lyrics-volume'],['peek','cleanup-details'],['open','settings']]){const [w,h]=pillSize(state,'M',tab),width=Math.min(w*scale,area.width-12*scale),height=Math.min(h*scale,area.height-12*scale),p=pillPosition(area,width,height,point,scale);assert.ok(p.x>=frame.x-1&&p.y>=frame.y-1&&p.x+width<=frame.x+frame.width+1&&p.y+height<=frame.y+frame.height+1)}
+ }
+})
+test('saved pill coordinates are bounded and malformed positions do not enter layout',()=>{assert.deepEqual(cleanPillPositions({a:{x:-5,y:2},b:{x:'bad',y:0}}),{a:{x:0,y:1}});assert.deepEqual(cleanPillPositions(null),{})})
+test('pill comet closes the contour and keeps a thicker leading head across the seam',()=>{
+ assert.ok(pillContour(134,28).d.endsWith('Z'));assert.equal(pillContour(0,28),null)
+ for(const head of [0,.01,.5,.99,1]){const segments=loopCometSegments(head);assert.equal(segments.length,24);assert.ok(segments.every(s=>s.start>=0&&s.start<1&&Math.abs(s.end-s.start-.36/24)<1e-9));assert.ok(segments.slice(1).every((s,i)=>s.width>segments[i].width&&s.opacity>segments[i].opacity));}
+})
+test('adding another saved PC requires explicit navigation intent',()=>{assert.equal(pairingView({phase:'idle',linked:true},'join'),'reconnecting');assert.equal(pairingView({phase:'idle',linked:true},'join',true),'join');assert.equal(pairingView({phase:'idle',linked:true},'choose',true),'start');assert.equal(pairingView({phase:'connected',linked:true},'join',true),'connected')})
+
+test('the floating native frame reserves space for the full perimeter glow',()=>{
+ for(const scale of [1,1.25,2])for(const point of [{x:0,y:0},{x:.5,y:.5},{x:1,y:1}]){
+  const area={x:-1920,y:0,width:1920,height:1080},frame=pillEnvelope(area,'M',scale,point)
+  assert.ok(frame.x>=area.x&&frame.y>=area.y&&frame.x+frame.width<=area.x+area.width&&frame.y+frame.height<=area.y+area.height)
+  for(const [state,tab]of [['idle','home'],['peek','lyrics-volume'],['open','settings']]){
+   const [w,h]=pillSize(state,'M',tab),width=Math.min(Math.round(w*scale),area.width-12*scale),height=Math.min(Math.round(h*scale),area.height-12*scale),p=pillPosition(area,width,height,point,scale)
+   assert.ok(p.x-frame.x>=6*scale-1&&p.y-frame.y>=6*scale-1&&frame.x+frame.width-p.x-width>=6*scale-1&&frame.y+frame.height-p.y-height>=6*scale-1)
+  }
+ }
+})
+
+test('compact dragging follows the cursor and reaches every edge at negative origins and DPI',()=>{
+ for(const scale of [1,1.25,2])for(const size of ['S','M','L']){
+  const area={x:-1920,y:-300,width:1920,height:1080},margin=6*scale
+  const points=[{x:area.x,y:area.y},{x:area.x+area.width-1,y:area.y},{x:area.x,y:area.y+area.height-1},{x:area.x+area.width-1,y:area.y+area.height-1},{x:-900,y:240}]
+  for(const cursor of points){
+   const p=pillDragPosition(area,size,scale,cursor)
+   assert.ok(p.x>=area.x+margin-1&&p.y>=area.y+margin-1)
+   assert.ok(p.x+p.width<=area.x+area.width-margin+1&&p.y+p.height<=area.y+area.height-margin+1)
+   if(cursor.x===-900){assert.ok(Math.abs(p.center.x-cursor.x)<=.5&&Math.abs(p.center.y-cursor.y)<=.5)}
+   else{assert.ok(Math.min(Math.abs(p.x-area.x-margin),Math.abs(p.x+p.width-area.x-area.width+margin))<=1);assert.ok(Math.min(Math.abs(p.y-area.y-margin),Math.abs(p.y+p.height-area.y-area.height+margin))<=1)}
+  }
+ }
+})
