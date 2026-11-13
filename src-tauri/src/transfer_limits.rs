@@ -21,7 +21,7 @@ pub fn session_mb(local:usize,peer:usize,main:bool,local_configured:bool,peer_co
 pub const fn wire_bytes(file_limit:usize)->usize{((file_limit+2)/3)*4+1024*1024}
 pub fn hello(name:&str,mb:usize,configured:bool)->Result<String,String>{validate(mb)?;if name.is_empty()||name.len()>256||name.chars().any(char::is_control){return Err("Nombre de equipo inválido".into())}Ok(format!("bimu-sync-v5\n{mb}\n{}\n{name}",if configured{1}else{0}))}
 pub fn parse_hello(value:&str)->Result<(String,usize,bool),String>{
- let mut parts=value.splitn(4,'\n');if parts.next()!=Some("bimu-sync-v5"){return Err("Actualizá Bimu en ambas PCs para usar esta conexión".into())}
+ let mut parts=value.splitn(4,'\n');if !matches!(parts.next(),Some("bimu-sync-v5"|"bimu-sync-v6")){return Err("Actualizá Bimu en ambas PCs para usar esta conexión".into())}
  let mb=parts.next().and_then(|s|s.parse().ok()).ok_or("Límite remoto inválido")?;validate(mb)?;
  let configured=match parts.next(){Some("1")=>true,Some("0")=>false,_=>return Err("Configuración remota inválida".into())};
  let name=parts.next().ok_or("Falta el nombre del equipo")?;

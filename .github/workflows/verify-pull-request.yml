@@ -65,13 +65,15 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Verify notch reveal frames in Microsoft Edge
-        run: npm run test:browser
+        run: |
+          npm run test:browser
+          node tests/pill-and-devices.browser.mjs
       - name: Preserve reveal screenshots
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: Bimu-notch-reveal-screenshots
-          path: test-results/notch-reveal/*.png
+          path: test-results/**/*.png
           if-no-files-found: ignore
       - run: cargo test --locked --manifest-path native-tests/Cargo.toml
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml

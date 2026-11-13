@@ -1,10 +1,14 @@
 // Presentation rules only; pairing and transfer authority stay in native code.
-export function pairingView(status,route='start'){
+export function pairingView(status,route='start',allowNew=false){
  if(status.phase==='loading')return 'loading'
  if(status.phase==='connected')return 'connected'
  if(status.phase==='waiting')return 'code'
+ if(status.linked&&!allowNew)return 'reconnecting'
+ if(status.phase==='connecting'||status.phase==='disconnecting')return 'connecting'
+ if(route==='choose')return 'start'
+ if(route==='join')return 'join'
+ if(route==='host')return 'create-error'
  if(status.linked)return 'reconnecting'
- if(status.phase==='connecting')return 'connecting'
  if(route==='host')return 'create-error'
  return route==='join'?'join':'start'
 }

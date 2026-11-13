@@ -7,11 +7,11 @@ use crate::shelf_shared::ShelfMetadata;
 
 #[derive(Default)]pub struct Shelf(pub Mutex<()>);
 #[derive(Clone, Deserialize, Serialize)]struct StoredItem { id: String, path: PathBuf }
-#[derive(Serialize)]pub struct ShelfItem { pub id:String, pub name:String, pub path:String, pub kind:String, pub available:bool, pub remote:bool, pub online:bool, pub origin:Option<String>, pub busy:bool }
+#[derive(Serialize)]pub struct ShelfItem {pub preview_version:Option<String>, pub peer_id:Option<String>, pub id:String, pub name:String, pub path:String, pub kind:String, pub available:bool, pub remote:bool, pub online:bool, pub origin:Option<String>, pub busy:bool }
 fn location(app:&AppHandle)->Result<PathBuf,String>{let dir=app.path().app_data_dir().map_err(|e|e.to_string())?;fs::create_dir_all(&dir).map_err(|e|e.to_string())?;Ok(dir.join("shelf.json"))}
 fn read(app:&AppHandle)->Result<Vec<StoredItem>,String>{match crate::bounded_io::read_limited(&location(app)?,1024*1024){Ok(data)=>serde_json::from_slice(&data).map_err(|_|"No se pudo leer la bandeja guardada.".into()),Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(vec![]),Err(e)=>Err(e.to_string())}}
 fn write(app:&AppHandle,entries:&[StoredItem])->Result<(),String>{crate::config_migration::write_atomic(&location(app)?,&serde_json::to_vec(entries).map_err(|e|e.to_string())?)}
-fn view(items:Vec<StoredItem>)->Vec<ShelfItem>{items.into_iter().map(|item|{let meta=fs::metadata(&item.path);ShelfItem{id:item.id,name:item.path.file_name().unwrap_or(item.path.as_os_str()).to_string_lossy().into_owned(),path:item.path.to_string_lossy().into_owned(),kind:if meta.as_ref().map(|m|m.is_dir()).unwrap_or(false){"folder"}else{"file"}.into(),available:meta.is_ok(),remote:false,online:true,origin:None,busy:false}}).collect()}
+fn view(items:Vec<StoredItem>)->Vec<ShelfItem>{items.into_iter().map(|item|{let meta=fs::metadata(&item.path);ShelfItem{preview_version:meta.as_ref().ok().and_then(|m|m.modified().ok().and_then(|t|t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t|format!("{}:{}",m.len(),t.as_nanos()))),peer_id:None,id:item.id,name:item.path.file_name().unwrap_or(item.path.as_os_str()).to_string_lossy().into_owned(),path:item.path.to_string_lossy().into_owned(),kind:if meta.as_ref().map(|m|m.is_dir()).unwrap_or(false){"folder"}else{"file"}.into(),available:meta.is_ok(),remote:false,online:true,origin:None,busy:false}}).collect()}
 fn combined(app:&AppHandle)->Result<Vec<ShelfItem>,String>{
  let local={let state=app.state::<Shelf>();let _guard=state.0.lock().map_err(|_|"Bandeja ocupada")?;view(read(app)?)};
  let mut all=local;all.extend(crate::device_pairing::remote_shelf(app));Ok(all)
@@ -19,7 +19,7 @@ fn combined(app:&AppHandle)->Result<Vec<ShelfItem>,String>{
 /// Only metadata leaves the device. Absolute paths remain private.
 pub(crate) fn shared_snapshot(app:&AppHandle)->Result<Vec<ShelfMetadata>,String>{
  let state=app.state::<Shelf>();let _guard=state.0.lock().map_err(|_|"Bandeja ocupada")?;
- let mut items=Vec::new();for item in view(read(app)?){let metadata=ShelfMetadata{id:item.id,name:item.name,kind:item.kind,available:item.available};if crate::shelf_shared::validate(std::slice::from_ref(&metadata)).is_ok(){items.push(metadata)}}Ok(items)
+ let mut items=Vec::new();for item in view(read(app)?){let metadata=ShelfMetadata{revision:item.preview_version,id:item.id,name:item.name,kind:item.kind,available:item.available};if crate::shelf_shared::validate(std::slice::from_ref(&metadata)).is_ok(){items.push(metadata)}}Ok(items)
 }
 /// Resolve only a currently saved shelf id; peers never supply filesystem paths.
 pub(crate) fn path_for_share(app:&AppHandle,id:&str)->Result<PathBuf,String>{
@@ -43,4 +43,10 @@ pub fn add_paths(app:&AppHandle,paths:Vec<PathBuf>)->Result<Vec<ShelfItem>,Strin
  if let Some(remote)=id.strip_prefix("peer:"){return crate::device_pairing::request_remote_shelf(&app,remote)}
  let path={let state=app.state::<Shelf>();let _guard=state.0.lock().map_err(|_|"Bandeja ocupada")?;let item=read(&app)?.into_iter().find(|item|item.id==id).ok_or("El elemento ya no está en la bandeja.")?;item.path};
  if !path.exists(){return Err("No encontré el archivo o carpeta en su ubicación original.".into())}app.opener().open_path(path.to_string_lossy().into_owned(),None::<&str>).map_err(|e|format!("No se pudo abrir: {e}"))
+}
+
+#[tauri::command]pub async fn shelf_thumbnail(id:String,app:AppHandle)->Result<Option<String>,String>{
+ if let Some(remote)=id.strip_prefix("peer:"){return crate::device_pairing::request_preview(&app,remote)}
+ let path=path_for_share(&app,&id)?;
+ Ok(crate::file_thumbnails::prepare(path).await)
 }

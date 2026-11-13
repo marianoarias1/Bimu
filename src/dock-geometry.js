@@ -71,3 +71,19 @@ export function desktopEnvelope(area,edge,size,scale,fraction){
  const vertical=isLateral(edge)?Math.round(12*scale):0,y=Math.max(area.y,frame.y-vertical),bottom=Math.min(area.y+area.height,frame.y+frame.height+vertical)
  return {...frame,x,y,width:right-x,height:bottom-y}
 }
+
+// Floating mode keeps one anchor and native envelope for every visual state.
+export function pillSize(state,size='M',tab='home'){
+ if(['idle','anticipate','retracted'].includes(state))return ({S:[120,26],M:[134,28],L:[148,30]}[size]||[134,28])
+ return notchSize('top',state,size,tab)
+}
+export function pillPosition(area,width,height,point={x:.5,y:.1},scale=1){
+ const margin=6*scale,anchorX=area.x+area.width*clamp(Number.isFinite(point.x)?point.x:.5,0,1),anchorY=area.y+area.height*clamp(Number.isFinite(point.y)?point.y:.1,0,1)
+ const below=anchorY<=area.y+area.height/2
+ return {x:Math.round(clamp(anchorX-width/2,area.x+margin,Math.max(area.x+margin,area.x+area.width-width-margin))),y:Math.round(clamp(below?anchorY-14*scale:anchorY+14*scale-height,area.y+margin,Math.max(area.y+margin,area.y+area.height-height-margin)))}
+}
+export function pillEnvelope(area,size,scale,point){
+ return [['idle','home'],['peek','lyrics-volume'],['peek','cleanup-details'],['open','home'],['open','settings']].map(([state,tab])=>{const [w,h]=pillSize(state,size,tab),width=Math.min(Math.round(w*scale),Math.max(1,area.width-12*scale)),height=Math.min(Math.round(h*scale),Math.max(1,area.height-12*scale));return {...pillPosition(area,width,height,point,scale),width,height}}).reduce(unionRects)
+}
+
+export function cleanPillPositions(value){return Object.fromEntries(Object.entries(value&&typeof value==='object'?value:{}).slice(0,16).filter(([id,p])=>id.length<=256&&Number.isFinite(p?.x)&&Number.isFinite(p?.y)).map(([id,p])=>[id,{x:clamp(p.x,0,1),y:clamp(p.y,0,1)}]))}

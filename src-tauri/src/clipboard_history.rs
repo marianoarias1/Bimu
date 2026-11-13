@@ -83,7 +83,7 @@ fn insert(data:&mut Data,content:Content,origin:String,shareable:bool){
    if crate::clipboard_files_windows::replace(app,&paths).is_err(){let _=std::fs::remove_dir_all(&destination);return Err("No se pudieron copiar los archivos recibidos".into())}
    Content::Files(paths)
   },
-  ClipboardPayload::Limits{..}|ClipboardPayload::Files(_)|ClipboardPayload::ShelfCatalog(_)|ClipboardPayload::ShelfRequest{..}|ClipboardPayload::ShelfReply{..}=>return Err("Formato de portapapeles recibido inválido".into()),
+  ClipboardPayload::ConnectionControl{..}|ClipboardPayload::PreviewRequest{..}|ClipboardPayload::PreviewReply{..}|ClipboardPayload::Limits{..}|ClipboardPayload::Files(_)|ClipboardPayload::ShelfCatalog(_)|ClipboardPayload::ShelfRequest{..}|ClipboardPayload::ShelfReply{..}=>return Err("Formato de portapapeles recibido inválido".into()),
  };
  data.last_sequence=sequence();if !data.paused{insert(&mut data,content,origin,true)}
  drop(data);let _=app.emit("clipboard-history-changed",());Ok(())
@@ -108,4 +108,10 @@ pub fn start(app:AppHandle){
   if history_allowed{let _=app.emit("clipboard-history-changed",());}
  }});
  #[cfg(not(windows))]let _=app;
+}
+
+#[tauri::command]pub async fn clipboard_history_thumbnail(id:u64,app:AppHandle)->Result<Option<String>,String>{
+ let path={let state=app.state::<ClipboardHistory>();let data=state.0.lock().map_err(|_|"Portapapeles ocupado")?;data.items.iter().find(|item|item.id==id).and_then(|item|match &item.content{Content::Files(paths)=>paths.first().cloned(),_=>None})};
+ let Some(path)=path else{return Ok(None)};
+ Ok(crate::file_thumbnails::prepare(path).await)
 }

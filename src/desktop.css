@@ -957,3 +957,25 @@ html[data-lyrics=true] .desktop.compact .notch-player .player-controls .lyrics-t
 @media(prefers-reduced-motion:reduce){.cleanup-ring-fill{transition:none}}
 /* The browser preview uses the same compact height as the desktop notch. */
 html.desktop-preview .desktop.compact{height:min(var(--notch-height,54px),100vh)}
+
+/* The floating pill shares the same pages, theme and opacity as the notch. */
+html[data-mode=pill] :is(.notch-surface,.quick-shell,.glass-shell){border-radius:24px!important;border:1px solid var(--line)!important}
+html[data-mode=pill] :is(.notch-surface,.quick-shell,.glass-shell)::before,html[data-mode=pill] :is(.notch-surface,.quick-shell,.glass-shell)::after{display:none!important}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate],[data-notch=retracted]) .notch-surface{border-radius:999px!important;padding:0 11px!important}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate],[data-notch=retracted]) .notch-face{left:11px!important;width:18px!important}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate],[data-notch=retracted]) .notch-clock{font-size:12px!important}
+html[data-mode=pill] .notch-grip,html[data-mode=pill] .notch-indicator{display:none!important}
+html[data-mode=pill] .desktop{border-radius:24px}
+
+.file-preview{display:inline-grid;place-items:center;flex-shrink:0;width:44px;height:38px;border-radius:7px;overflow:hidden;background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.file-preview>img{display:block;width:100%;height:100%;object-fit:contain}.shelf-open>.file-preview{width:64px;height:48px}.clipboard-icon.file-preview{width:43px;height:32px}
+
+.pair-saved-list{display:grid;gap:8px;margin:14px 0}.pair-saved-device{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--control-surface)}.pair-saved-name{min-width:0;flex:1}.pair-saved-name strong,.pair-saved-name small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pair-saved-name small{color:var(--muted);font-size:10px}.pair-favorite[aria-pressed=true]{color:var(--bimu-swatch)}.pair-device-menu{position:relative}.pair-device-menu summary{cursor:pointer;list-style:none}.pair-device-menu>button{position:absolute;right:0;top:24px;width:130px;z-index:5;background:var(--control-surface)}.pair-dialog-backdrop{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.4);z-index:100}.pair-dialog{width:min(390px,100%);padding:22px;border:1px solid var(--line);border-radius:16px;background:var(--control-surface);box-shadow:0 12px 44px #0004}.pair-dialog h3{font-size:15px;margin:0 0 12px}.pair-dialog p{font-size:12px;color:var(--muted)}.pair-dialog>div{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+
+html.desktop-preview[data-mode=pill] .desktop{position:absolute;left:var(--dock-left);top:var(--dock-top);margin:0;transform:none;width:var(--notch-width);height:var(--notch-height)}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-surface{display:grid;grid-template-columns:18px 1fr 23px;gap:6px;align-items:center;padding:0 10px!important}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-face{position:static!important;left:auto!important;width:18px!important;justify-content:center;margin:0}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .notch-clock{position:static!important;transform:none!important;justify-self:center;margin:0;font-size:12px;line-height:1}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .system-status{position:relative!important;inset:auto!important;justify-self:end;width:20px;height:20px}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .bimu-eyes{width:auto!important;height:auto!important;gap:5px!important}
+html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .bimu-eyes i{width:4px!important;height:6px!important}
