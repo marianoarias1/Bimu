@@ -1,6 +1,6 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react'
 import {getCurrentWindow,LogicalSize,PhysicalPosition,currentMonitor,primaryMonitor,cursorPosition,availableMonitors} from '@tauri-apps/api/window'
-import {EDGES,isLateral,notchSize,dockPosition,slideOffset,transitionDuration,unionRects,desktopEnvelope,pillSize,pillPosition,pillEnvelope,cleanPillPositions} from './dock-geometry'
+import {EDGES,isLateral,notchSize,dockPosition,slideOffset,transitionDuration,unionRects,desktopEnvelope,pillSize,pillPosition,pillEnvelope,pillDragPosition,clamp,cleanPillPositions} from './dock-geometry'
 const initial=()=>{try{const d=JSON.parse(localStorage.getItem('companion-dock')||'{}');return {mode:d.mode==='pill'?'pill':'notch',pillPositions:cleanPillPositions(d.pillPositions),monitorId:typeof d.monitorId==='string'&&d.monitorId.length<=256?d.monitorId:null,edge:EDGES.includes(d.edge)?d.edge:'top',offsets:Object.fromEntries(EDGES.map(e=>[e,Number.isFinite(d.offsets?.[e])?Math.max(0,Math.min(1,d.offsets[e])):.5]))}}catch{return {mode:'notch',pillPositions:{},monitorId:null,edge:'top',offsets:{top:.5,bottom:.5,left:.5,right:.5}}}}
 export function useDock({native,expanded,hovered,preview=false,retracted=false,tab,size,receiving=false,voiceVisible,onError,onDragEnd}){
   const [dock,setDock]=useState(initial)
@@ -30,7 +30,7 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
       root.style.setProperty('--notch-width',w+'px');root.style.setProperty('--notch-height',h+'px')
     }
     if(native&&pill&&dragRef.current?.nativeMove){
-      // Animate only the surface around its fixed center, inside the same HWND.
+      // Collapse toward the grab point inside the same HWND.
       // Pointer deltas keep moving that HWND without resizing or rebasing it.
       const d=dragRef.current
       setFrame(d.center.x-wantedW/2,d.center.y-wantedH/2,wantedW,wantedH)
@@ -136,16 +136,23 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
     }catch(error){onError('No se pudo mover Bimu: '+String(error))}
     finally{d.moving=false}
   }
+  const placeFloating=(d,cursor)=>{
+    const m=monitorsRef.current.find(m=>cursor.x>=m.position.x&&cursor.y>=m.position.y&&cursor.x<m.position.x+m.size.width&&cursor.y<m.position.y+m.size.height)||monitorRef.current
+    const a=m.workArea,area={x:a.position.x,y:a.position.y,width:a.size.width,height:a.size.height}
+    const placement=pillDragPosition(area,size,d.scale,cursor,d.grabOffset)
+    d.placement={...placement,monitor:m}
+    d.target={x:Math.round(placement.center.x-d.center.x*d.scale),y:Math.round(placement.center.y-d.center.y*d.scale)}
+    floatedFrame.current=true;moveFloating(d)
+  }
   const finishDrag=async e=>{
     const d=dragRef.current;if(!d||e.pointerId!==d.pointer)return
     d.ending=true
     // Flush the last coalesced move before measuring the real desktop location.
     while(d.moving)await new Promise(resolve=>setTimeout(resolve,8))
     try{
-      if(pill&&native&&d.moved){
-        const win=getCurrentWindow(),origin=await win.outerPosition(),scale=await win.scaleFactor(),rect=document.querySelector('.desktop').getBoundingClientRect()
-        const center={x:origin.x+(rect.left+rect.width/2)*scale,y:origin.y+(rect.top+rect.height/2)*scale}
-        const m=monitorsRef.current.find(m=>center.x>=m.position.x&&center.y>=m.position.y&&center.x<m.position.x+m.size.width&&center.y<m.position.y+m.size.height)||monitorRef.current
+      if(pill&&native&&(d.moved||d.reanchored)){
+        // Save the intended compact center, even if released before its animation ends.
+        const center=d.placement.center,m=d.placement.monitor
         const a=m.workArea,id=monitorKey(m),x=Math.max(0,Math.min(1,(center.x-a.position.x)/a.size.width)),y=Math.max(0,Math.min(1,(center.y-a.position.y)/a.size.height))
         monitorRef.current=m;setDock(current=>({...current,monitorId:id,pillPositions:{...current.pillPositions,[id]:{x,y}}}))
       }
@@ -156,26 +163,37 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
     onPointerDown:async e=>{
       if(e.button!==0)return
       e.preventDefault();e.currentTarget.setPointerCapture?.(e.pointerId)
-      const d={pointer:e.pointerId,start:fraction,x:e.screenX,y:e.screenY,moved:false,ready:!native,visualState:state,point:{...point}};dragRef.current=d;suppressClick.current=false
-      if(pill){
-        const rect=document.querySelector('.desktop').getBoundingClientRect(),frame=nativeFrame.current
-        d.center={x:rect.left+rect.width/2,y:rect.top+rect.height/2};d.frame=frame?{...frame}:null;d.nativeMove=native
-        setDragging(true)
-      }
-      try{if(native){const cursor=await cursorPosition();if(dragRef.current!==d)return;d.x=cursor.x;d.y=cursor.y;d.frame={...nativeFrame.current};d.ready=true;d.nativeMove=pill}}catch(error){dragRef.current=null;setDragging(false);onError(String(error))}
+      const pressed={x:e.clientX,y:e.clientY,handle:e.currentTarget.classList.contains('notch-move-button')}
+      const d={pointer:e.pointerId,start:fraction,x:native?e.screenX:e.clientX,y:native?e.screenY:e.clientY,moved:false,ready:false,visualState:state,point:{...point}};dragRef.current=d;suppressClick.current=false
+      try{
+        const cursor=native?await cursorPosition():{x:e.clientX,y:e.clientY}
+        if(dragRef.current!==d)return
+        d.x=cursor.x;d.y=cursor.y
+        if(pill){
+          const rect=document.querySelector('.desktop').getBoundingClientRect(),frame=nativeFrame.current,scale=native?monitorRef.current.scaleFactor:1
+          const [w,h]=pillSize('idle',size)
+          d.scale=scale;d.frame=frame?{...frame}:null;d.nativeMove=native;d.reanchored=pressed.handle
+          d.center=pressed.handle?{x:clamp(pressed.x,w/2+6,(frame?.width/scale||window.innerWidth)-w/2-6),y:clamp(pressed.y,h/2+6,(frame?.height/scale||window.innerHeight)-h/2-6)}:{x:rect.left+rect.width/2,y:rect.top+rect.height/2}
+          d.grabOffset=pressed.handle?{x:0,y:0}:{x:(frame?.x||0)+d.center.x*scale-cursor.x,y:(frame?.y||0)+d.center.y*scale-cursor.y}
+          if(native)placeFloating(d,cursor)
+          else if(pressed.handle)setDock(current=>({...current,monitorId:'preview',pillPositions:{...current.pillPositions,preview:{x:cursor.x/window.innerWidth,y:cursor.y/window.innerHeight}}}))
+          setDragging(true)
+        }
+        d.ready=true
+      }catch(error){dragRef.current=null;setDragging(false);onError(String(error))}
     },
     onPointerMove:async e=>{
       const d=dragRef.current;if(!d?.ready||d.ending||e.pointerId!==d.pointer)return
       const ticket=++moveRevision.current
       try{
-        const cursor=native?await cursorPosition():{x:e.screenX,y:e.screenY}
+        const cursor=native?await cursorPosition():{x:e.clientX,y:e.clientY}
         if(dragRef.current!==d||d.ending||ticket!==moveRevision.current)return
         const monitor=monitorRef.current,scale=native?monitor?.scaleFactor||1:1
         const dx=cursor.x-d.x,dy=cursor.y-d.y,delta=pill?Math.hypot(dx,dy):lateral?dy:dx
         if(Math.abs(delta)<4*scale&&!d.moved)return
         d.moved=true;suppressClick.current=true;setDragging(true)
-        if(pill&&native){floatedFrame.current=true;d.target={x:Math.round(d.frame.x+dx),y:Math.round(d.frame.y+dy)};moveFloating(d);return}
-        if(pill){setDock(current=>({...current,monitorId:'preview',pillPositions:{...current.pillPositions,preview:{x:Math.max(0,Math.min(1,d.point.x+dx/window.innerWidth)),y:Math.max(0,Math.min(1,d.point.y+dy/window.innerHeight))}}}));return}
+        if(pill&&native){placeFloating(d,cursor);return}
+        if(pill){const p=pillDragPosition({x:0,y:0,width:window.innerWidth,height:window.innerHeight},size,1,cursor,d.grabOffset);setDock(current=>({...current,monitorId:'preview',pillPositions:{...current.pillPositions,preview:{x:p.center.x/window.innerWidth,y:p.center.y/window.innerHeight}}}));return}
         const span=native?(lateral?monitor?.workArea.size.height:monitor?.workArea.size.width):(lateral?window.innerHeight:window.innerWidth)
         const next=slideOffset(d.start,delta,span||1000,scale)
         setDock(current=>({...current,offsets:{...current.offsets,[edge]:next}}))

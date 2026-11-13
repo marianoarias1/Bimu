@@ -70,23 +70,29 @@ try{
    if(mode==='pill'){
     await page.emulateMedia({reducedMotion:'no-preference'});
     const rect=await page.locator('.notch-move-button').boundingBox()
-    const origin=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x+r.width/2,y:window.__bimuWindow.y+r.y+r.height/2}})
-    await page.evaluate(()=>{window.__bimuCursor={x:100,y:100}});await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(350)
+    const cursorStart=await page.evaluate(rect=>({x:window.__bimuWindow.x+rect.x+rect.width/2,y:window.__bimuWindow.y+rect.y+rect.height/2}),rect)
+    await page.evaluate(cursor=>{window.__bimuCursor=cursor},cursorStart);await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(350)
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.notch),'idle','pressing the pill handle must collapse before movement')
     const compact=await page.locator('.desktop').boundingBox();assert.ok(compact.width<=100&&compact.height<=36)
+    const placed=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x+r.width/2,y:window.__bimuWindow.y+r.y+r.height/2}})
+    assert.ok(Math.abs(placed.x-cursorStart.x)<2&&Math.abs(placed.y-cursorStart.y)<2,'collapse must bring the compact pill under the cursor, not retain the expanded center')
     assert.ok(parseFloat(await page.locator('.desktop').evaluate(el=>getComputedStyle(el).transitionDuration))>0,'drag collapse retains the normal animation')
     const sizeCalls=await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length)
-    for(const [dx,dy]of [[20,8],[100,40],[300,100],[300,420]]){
-     await page.evaluate(({dx,dy})=>{window.__bimuCursor={x:100+dx,y:100+dy}},{dx,dy});await page.mouse.move(rect.x+rect.width/2+dx/30,rect.y+rect.height/2+dy/30);await page.waitForTimeout(80)
-     const moved=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x+r.width/2,y:window.__bimuWindow.y+r.y+r.height/2}})
-     assert.ok(Math.abs(moved.x-origin.x-dx)<2&&Math.abs(moved.y-origin.y-dy)<2,'native surface must follow every pointer delta without rebasing')
+    let move=0
+    for(const cursor of [{x:cursorStart.x+20,y:cursorStart.y+8},{x:0,y:0},{x:1439,y:0},{x:0,y:859},{x:1439,y:859},{x:1000,y:450}]){
+     await page.evaluate(cursor=>{window.__bimuCursor=cursor},cursor);await page.mouse.move(rect.x+rect.width/2+(++move%2),rect.y+rect.height/2+(move%2));await page.waitForTimeout(80)
+     const moved=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x,y:window.__bimuWindow.y+r.y,width:r.width,height:r.height}})
+     const x=Math.max(6,Math.min(1440-6-moved.width,cursor.x-moved.width/2)),y=Math.max(6,Math.min(860-6-moved.height,cursor.y-moved.height/2))
+     assert.ok(Math.abs(moved.x-x)<2&&Math.abs(moved.y-y)<2,'compact surface follows the cursor and reaches every screen edge')
     }
-    assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length),sizeCalls,'drag must not resize the native frame')
-    const movesBeforeRelease=await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_position')).length)
-    await page.mouse.up();await page.waitForTimeout(350)
+    assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length),sizeCalls,'movement must not resize the native frame')
+    await page.mouse.up();await page.waitForTimeout(450)
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.notch),'peek','release restores the expanded player')
-    assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_position')).length),movesBeforeRelease,'release must preserve the dragged frame rather than jump to a new envelope')
-    const point=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('companion-dock'));return d.pillPositions[d.monitorId]});assert.ok(Math.abs(point.x-(.5+300/1440))<.01);assert.ok(Math.abs(point.y-(.12+420/860))<.01);
+    const point=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('companion-dock'));return d.pillPositions[d.monitorId]});assert.ok(Math.abs(point.x-1000/1440)<.01);assert.ok(Math.abs(point.y-450/860)<.01)
+    await page.mouse.move(1,1);await page.waitForFunction(()=>document.documentElement.dataset.notch==='idle');await page.waitForTimeout(350)
+    const saved=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x+r.width/2,y:window.__bimuWindow.y+r.y+r.height/2}})
+    assert.ok(Math.abs(saved.x-1000)<2&&Math.abs(saved.y-450)<2,'the compact pill must keep the drop location after reopening and collapsing')
+
 
    }
    if(await page.evaluate(()=>document.documentElement.dataset.notch)!=='peek')await surface.hover();await page.waitForFunction(()=>document.documentElement.dataset.notch==='peek')

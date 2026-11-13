@@ -38,4 +38,4 @@ Windows checks now include a real SMTC query from a fresh caller thread and repe
 
 The native window also subclasses non-client calculation/painting and clears caption/sizing styles before first show. This keeps its client origin equal to its outer origin across Windows/WebView2 frame refreshes. Cursor transparency and DPI messages still delegate to Tao; Windows hung-window detection is not disabled.
 
-While holding the floating pill drag handle, the surface animates to eyes and clock inside its existing native frame. Releasing restores the hover view. Native movement and the final persisted center stay independent from the size animation; the notch drag behavior is unchanged.
+While holding the floating pill drag handle, the surface animates to eyes and clock under the cursor inside its existing native frame. Only the compact pill and its glow margin limit the drag at work-area edges. Releasing restores the hover view. The final target center is persisted even when the button is released before the animation finishes; the notch drag behavior is unchanged.

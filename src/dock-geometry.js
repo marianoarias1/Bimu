@@ -81,6 +81,12 @@ export function pillPosition(area,width,height,point={x:.5,y:.1},scale=1){
  const margin=6*scale,anchorX=area.x+area.width*clamp(Number.isFinite(point.x)?point.x:.5,0,1),anchorY=area.y+area.height*clamp(Number.isFinite(point.y)?point.y:.1,0,1)
  return {x:Math.round(clamp(anchorX-width/2,area.x+margin,Math.max(area.x+margin,area.x+area.width-width-margin))),y:Math.round(clamp(anchorY-height/2,area.y+margin,Math.max(area.y+margin,area.y+area.height-height-margin)))}
 }
+// Cursor and work area are physical pixels; only the compact pill limits the drag.
+export function pillDragPosition(area,size,scale,cursor,offset={x:0,y:0}){
+ const [w,h]=pillSize('idle',size),width=Math.min(Math.round(w*scale),Math.max(1,area.width-12*scale)),height=Math.min(Math.round(h*scale),Math.max(1,area.height-12*scale))
+ const position=pillPosition(area,width,height,{x:(cursor.x+offset.x-area.x)/area.width,y:(cursor.y+offset.y-area.y)/area.height},scale)
+ return {...position,width,height,center:{x:position.x+width/2,y:position.y+height/2}}
+}
 export function pillEnvelope(area,size,scale,point){
  const frame=[['idle','home'],['peek','lyrics-volume'],['peek','cleanup-details'],['open','home'],['open','settings']].map(([state,tab])=>{const [w,h]=pillSize(state,size,tab),width=Math.min(Math.round(w*scale),Math.max(1,area.width-12*scale)),height=Math.min(Math.round(h*scale),Math.max(1,area.height-12*scale));return {...pillPosition(area,width,height,point,scale),width,height}}).reduce(unionRects)
  // Keep the comet glow inside the native frame along all four free edges.

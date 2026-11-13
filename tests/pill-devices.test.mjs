@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {pillSize,pillPosition,pillEnvelope,cleanPillPositions} from '../src/dock-geometry.js'
+import {pillSize,pillPosition,pillEnvelope,pillDragPosition,cleanPillPositions} from '../src/dock-geometry.js'
 import {pillContour,loopCometSegments} from '../src/music-edge.js'
 import {pairingView} from '../src/device-pairing-ui.js'
 test('floating frame contains compact, hover and settings on negative/DPI monitors',()=>{
@@ -23,6 +23,20 @@ test('the floating native frame reserves space for the full perimeter glow',()=>
   for(const [state,tab]of [['idle','home'],['peek','lyrics-volume'],['open','settings']]){
    const [w,h]=pillSize(state,'M',tab),width=Math.min(Math.round(w*scale),area.width-12*scale),height=Math.min(Math.round(h*scale),area.height-12*scale),p=pillPosition(area,width,height,point,scale)
    assert.ok(p.x-frame.x>=6*scale-1&&p.y-frame.y>=6*scale-1&&frame.x+frame.width-p.x-width>=6*scale-1&&frame.y+frame.height-p.y-height>=6*scale-1)
+  }
+ }
+})
+
+test('compact dragging follows the cursor and reaches every edge at negative origins and DPI',()=>{
+ for(const scale of [1,1.25,2])for(const size of ['S','M','L']){
+  const area={x:-1920,y:-300,width:1920,height:1080},margin=6*scale
+  const points=[{x:area.x,y:area.y},{x:area.x+area.width-1,y:area.y},{x:area.x,y:area.y+area.height-1},{x:area.x+area.width-1,y:area.y+area.height-1},{x:-900,y:240}]
+  for(const cursor of points){
+   const p=pillDragPosition(area,size,scale,cursor)
+   assert.ok(p.x>=area.x+margin-1&&p.y>=area.y+margin-1)
+   assert.ok(p.x+p.width<=area.x+area.width-margin+1&&p.y+p.height<=area.y+area.height-margin+1)
+   if(cursor.x===-900){assert.ok(Math.abs(p.center.x-cursor.x)<=.5&&Math.abs(p.center.y-cursor.y)<=.5)}
+   else{assert.ok(Math.min(Math.abs(p.x-area.x-margin),Math.abs(p.x+p.width-area.x-area.width+margin))<=1);assert.ok(Math.min(Math.abs(p.y-area.y-margin),Math.abs(p.y+p.height-area.y-area.height+margin))<=1)}
   }
  }
 })
