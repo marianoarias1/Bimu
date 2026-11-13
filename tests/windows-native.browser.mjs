@@ -29,6 +29,15 @@ try{
   await page.waitForFunction(()=>document.documentElement.dataset.notch==='peek')
   assert.equal(await page.getByText('No se pudo consultar la reproducción.',{exact:true}).count(),0)
   await page.locator('.desktop').screenshot({path:`test-results/native-windows/${mode}-open.png`})
+  if(mode==='pill'){
+   const handle=await page.locator('.notch-move-button').boundingBox()
+   await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down()
+   await page.waitForFunction(()=>document.documentElement.dataset.dragging==='true'&&document.documentElement.dataset.notch==='idle')
+   await page.waitForTimeout(350)
+   const compact=await page.locator('.desktop').boundingBox();assert.ok(compact.width<=100&&compact.height<=36)
+   await page.locator('.desktop').screenshot({path:'test-results/native-windows/pill-drag.png'})
+   await page.mouse.up();await page.waitForFunction(()=>document.documentElement.dataset.dragging==='false'&&document.documentElement.dataset.notch==='peek')
+  }
   await page.mouse.move(1,1);await page.waitForFunction(()=>document.documentElement.dataset.notch==='idle')
   console.log('PASS actual Windows/WebView2',mode)
  }

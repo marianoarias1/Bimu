@@ -986,7 +986,6 @@ html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.comp
 html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .system-status{display:none!important}
 html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .bimu-eyes{gap:5px!important}
 html[data-mode=pill]:is([data-notch=idle],[data-notch=anticipate]) .desktop.compact .bimu-eyes i{width:4px!important;height:8px!important}
-html[data-mode=pill][data-dragging=true] .desktop{transition:none!important}
 /* An opaque, spaced action replaces the almost invisible transparent overlay. */
 .desktop .pair-device-menu{flex:none;z-index:6}
 .desktop .pair-device-menu summary{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;color:var(--control-ink);border:1px solid transparent}

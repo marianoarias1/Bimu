@@ -68,18 +68,23 @@ try{
   await page.locator('.desktop').screenshot({path:`test-results/pill-devices/${mode}-${theme}-${selected}.png`})
   if(selected==='music'){
    if(mode==='pill'){
+    await page.emulateMedia({reducedMotion:'no-preference'});
     const rect=await page.locator('.notch-move-button').boundingBox()
-    const origin=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x,y:window.__bimuWindow.y+r.y}})
-    await page.evaluate(()=>{window.__bimuCursor={x:100,y:100}});await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(60)
+    const origin=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x+r.width/2,y:window.__bimuWindow.y+r.y+r.height/2}})
+    await page.evaluate(()=>{window.__bimuCursor={x:100,y:100}});await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.waitForTimeout(350)
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.notch),'idle','pressing the pill handle must collapse before movement')
+    const compact=await page.locator('.desktop').boundingBox();assert.ok(compact.width<=100&&compact.height<=36)
+    assert.ok(parseFloat(await page.locator('.desktop').evaluate(el=>getComputedStyle(el).transitionDuration))>0,'drag collapse retains the normal animation')
     const sizeCalls=await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length)
     for(const [dx,dy]of [[20,8],[100,40],[300,100],[300,420]]){
      await page.evaluate(({dx,dy})=>{window.__bimuCursor={x:100+dx,y:100+dy}},{dx,dy});await page.mouse.move(rect.x+rect.width/2+dx/30,rect.y+rect.height/2+dy/30);await page.waitForTimeout(80)
-     const moved=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x,y:window.__bimuWindow.y+r.y}})
+     const moved=await page.evaluate(()=>{const r=document.querySelector('.desktop').getBoundingClientRect();return {x:window.__bimuWindow.x+r.x+r.width/2,y:window.__bimuWindow.y+r.y+r.height/2}})
      assert.ok(Math.abs(moved.x-origin.x-dx)<2&&Math.abs(moved.y-origin.y-dy)<2,'native surface must follow every pointer delta without rebasing')
     }
     assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_size')).length),sizeCalls,'drag must not resize the native frame')
     const movesBeforeRelease=await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_position')).length)
-    await page.mouse.up();await page.waitForTimeout(150)
+    await page.mouse.up();await page.waitForTimeout(350)
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.notch),'peek','release restores the expanded player')
     assert.equal(await page.evaluate(()=>window.__bimuCalls.filter(c=>c.command.includes('|set_position')).length),movesBeforeRelease,'release must preserve the dragged frame rather than jump to a new envelope')
     const point=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('companion-dock'));return d.pillPositions[d.monitorId]});assert.ok(Math.abs(point.x-(.5+300/1440))<.01);assert.ok(Math.abs(point.y-(.12+420/860))<.01);
 
@@ -87,7 +92,7 @@ try{
    if(await page.evaluate(()=>document.documentElement.dataset.notch)!=='peek')await surface.hover();await page.waitForFunction(()=>document.documentElement.dataset.notch==='peek')
    if(theme==='dark'){
     assert.equal(await page.evaluate(()=>window.__mediaMax),1,'slow polls must not overlap')
-    await page.evaluate(()=>{window.__mediaMissing=true});await page.waitForTimeout(2400);assert.ok((await page.locator('.player-track strong').innerText()).includes('Canción de prueba'),'one missing Windows sample must not erase playback');await page.evaluate(()=>{window.__mediaMissing=false})
+    await page.evaluate(()=>{window.__mediaMissing=true});await page.waitForTimeout(2400);assert.ok(!(await page.locator('.player-track strong').innerText()).includes('Canción de prueba'),'an empty Windows sample must clear playback without a grace period');await page.evaluate(()=>{window.__mediaMissing=false})
     await page.evaluate(()=>{window.__mediaFailure=true});await page.waitForTimeout(2200);assert.equal(await page.getByText('No se pudo consultar la reproducción.',{exact:true}).count(),0);await page.evaluate(()=>{window.__mediaFailure=false})
    }
    await page.getByRole('button',{name:'Abrir ajustes',exact:true}).click();await page.getByRole('button',{name:'Ajustes avanzados',exact:true}).click()

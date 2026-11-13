@@ -2,13 +2,13 @@ import {useEffect,useLayoutEffect,useRef,useState} from 'react'
 import {getCurrentWindow,LogicalSize,PhysicalPosition,currentMonitor,primaryMonitor,cursorPosition,availableMonitors} from '@tauri-apps/api/window'
 import {EDGES,isLateral,notchSize,dockPosition,slideOffset,transitionDuration,unionRects,desktopEnvelope,pillSize,pillPosition,pillEnvelope,cleanPillPositions} from './dock-geometry'
 const initial=()=>{try{const d=JSON.parse(localStorage.getItem('companion-dock')||'{}');return {mode:d.mode==='pill'?'pill':'notch',pillPositions:cleanPillPositions(d.pillPositions),monitorId:typeof d.monitorId==='string'&&d.monitorId.length<=256?d.monitorId:null,edge:EDGES.includes(d.edge)?d.edge:'top',offsets:Object.fromEntries(EDGES.map(e=>[e,Number.isFinite(d.offsets?.[e])?Math.max(0,Math.min(1,d.offsets[e])):.5]))}}catch{return {mode:'notch',pillPositions:{},monitorId:null,edge:'top',offsets:{top:.5,bottom:.5,left:.5,right:.5}}}}
-export function useDock({native,expanded,hovered,preview=false,retracted=false,tab,size,receiving=false,voiceVisible,onError}){
+export function useDock({native,expanded,hovered,preview=false,retracted=false,tab,size,receiving=false,voiceVisible,onError,onDragEnd}){
   const [dock,setDock]=useState(initial)
   const [dragging,setDragging]=useState(false)
   const [refresh,setRefresh]=useState(0)
   const shown=useRef(false),lastState=useRef(null),lastTab=useRef(null),nativeFrame=useRef(null)
   const monitorRef=useRef(null),queue=useRef(Promise.resolve()),revision=useRef(0),dragRef=useRef(null),suppressClick=useRef(false),moveRevision=useRef(0)
-  const mode=dock.mode||'notch',pill=mode==='pill',edge=pill?'top':dock.edge, lateral=isLateral(edge),state=expanded?'open':dragging?(dragRef.current?.visualState||'peek'):hovered?'peek':preview?'anticipate':retracted&&!pill?'retracted':'idle'
+  const mode=dock.mode||'notch',pill=mode==='pill',edge=pill?'top':dock.edge, lateral=isLateral(edge),state=pill&&dragging?'idle':expanded?'open':dragging?(dragRef.current?.visualState||'peek'):hovered?'peek':preview?'anticipate':retracted&&!pill?'retracted':'idle'
   const fraction=dock.offsets[edge]
   const monitorsRef=useRef([]),floatedFrame=useRef(false)
   const monitorKey=m=>`${m.name||"monitor"}:${m.position.x}:${m.position.y}`
@@ -24,11 +24,17 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
     root.dataset.mode=mode;root.dataset.edge=edge;root.dataset.notch=state;root.dataset.dragging=String(dragging);root.dataset.centered=String(pill?Math.abs(point.x-.5)<.0001&&Math.abs(point.y-.5)<.0001:Math.abs(fraction-.5)<.0001)
     root.style.setProperty('--dock-duration',duration+'ms')
     root.style.setProperty('--dock-ease',state==='peek'&&previous!=='peek'&&!reduced?'cubic-bezier(.2,1.12,.3,1)':'cubic-bezier(.22,1,.36,1)')
-    if(native&&pill&&dragRef.current?.nativeMove)return
     const [wantedW,wantedH]=(pill?pillSize(state,size,tab):notchSize(edge,state,size,tab,receiving))
     const setFrame=(x,y,w,h)=>{
       root.style.setProperty('--dock-left',x+'px');root.style.setProperty('--dock-top',y+'px')
       root.style.setProperty('--notch-width',w+'px');root.style.setProperty('--notch-height',h+'px')
+    }
+    if(native&&pill&&dragRef.current?.nativeMove){
+      // Animate only the surface around its fixed center, inside the same HWND.
+      // Pointer deltas keep moving that HWND without resizing or rebasing it.
+      const d=dragRef.current
+      setFrame(d.center.x-wantedW/2,d.center.y-wantedH/2,wantedW,wantedH)
+      return
     }
     if(!native){const p=pill?pillPosition({x:0,y:0,width:window.innerWidth,height:window.innerHeight},wantedW,wantedH,point):{x:0,y:0};setFrame(p.x,p.y,wantedW,wantedH);return}
     // Update animation endpoints before paint. The OS frame is already fixed,
@@ -144,14 +150,19 @@ export function useDock({native,expanded,hovered,preview=false,retracted=false,t
         monitorRef.current=m;setDock(current=>({...current,monitorId:id,pillPositions:{...current.pillPositions,[id]:{x,y}}}))
       }
     }catch(error){onError(String(error))}
-    finally{dragRef.current=null;moveRevision.current++;setDragging(false);if(e.currentTarget?.hasPointerCapture?.(d.pointer))e.currentTarget.releasePointerCapture(d.pointer)}
+    finally{dragRef.current=null;moveRevision.current++;setDragging(false);if(pill&&d.visualState==='peek')onDragEnd?.();if(e.currentTarget?.hasPointerCapture?.(d.pointer))e.currentTarget.releasePointerCapture(d.pointer)}
   }
   const handlers={
     onPointerDown:async e=>{
       if(e.button!==0)return
       e.preventDefault();e.currentTarget.setPointerCapture?.(e.pointerId)
       const d={pointer:e.pointerId,start:fraction,x:e.screenX,y:e.screenY,moved:false,ready:!native,visualState:state,point:{...point}};dragRef.current=d;suppressClick.current=false
-      try{if(native){const cursor=await cursorPosition();if(dragRef.current!==d)return;d.x=cursor.x;d.y=cursor.y;d.frame={...nativeFrame.current};d.ready=true;d.nativeMove=pill}}catch(error){dragRef.current=null;onError(String(error))}
+      if(pill){
+        const rect=document.querySelector('.desktop').getBoundingClientRect(),frame=nativeFrame.current
+        d.center={x:rect.left+rect.width/2,y:rect.top+rect.height/2};d.frame=frame?{...frame}:null;d.nativeMove=native
+        setDragging(true)
+      }
+      try{if(native){const cursor=await cursorPosition();if(dragRef.current!==d)return;d.x=cursor.x;d.y=cursor.y;d.frame={...nativeFrame.current};d.ready=true;d.nativeMove=pill}}catch(error){dragRef.current=null;setDragging(false);onError(String(error))}
     },
     onPointerMove:async e=>{
       const d=dragRef.current;if(!d?.ready||d.ending||e.pointerId!==d.pointer)return

@@ -1,4 +1,4 @@
-import {singleFlight,sameTrack,retainMissingMedia} from './media-refresh'
+import {singleFlight,sameTrack} from './media-refresh'
 import {FilePreview} from './FilePreview'
 import {MusicEdge} from './MusicEdge'
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
@@ -132,7 +132,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
   const shelfOpen=async item=>{try{setShelfError('');await invoke('shelf_open',{id:item.id})}catch(e){setShelfError(String(e))}}
   const shelfRemove=async item=>{try{setShelfItems(await invoke('shelf_remove',{id:item.id}));setShelfError('')}catch(e){setShelfError(String(e))}}
   const mediaRef=useRef(null),mediaRevision=useRef(0),mediaMounted=useRef(true),mediaSeeking=useRef(false),seekRefreshTimer=useRef()
-  const mediaLastSeen=useRef(0),mediaPolling=useRef(null),coverRequest=useRef({pending:false,at:0,key:''})
+  const mediaPolling=useRef(null),coverRequest=useRef({pending:false,at:0,key:''})
   if(!mediaPolling.current)mediaPolling.current=singleFlight(async()=>{
     if(!nativeMode||mediaSeeking.current)return
     const revision=++mediaRevision.current
@@ -140,8 +140,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
       const next=await invoke('media_state',{includeCover:false})
       if(!mediaMounted.current||revision!==mediaRevision.current)return
       const previous=mediaRef.current,same=sameTrack(next,previous)
-      if(next)mediaLastSeen.current=Date.now()
-      const value=next?{...next,cover:same?previous.cover:null}:retainMissingMedia(previous,mediaLastSeen.current,Date.now())
+      const value=next?{...next,cover:same?previous.cover:null}:null
       mediaRef.current=value;setMedia(value);setMediaError('')
       if(next&&!value.cover){
         const key=JSON.stringify([next.source,next.title,next.artist]),request=coverRequest.current
@@ -153,7 +152,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
         }
       }
     }catch{
-      if(mediaMounted.current&&revision===mediaRevision.current){const value=retainMissingMedia(mediaRef.current,mediaLastSeen.current,Date.now());mediaRef.current=value;setMedia(value)}
+      // Like main, a failed query leaves the last sample; an empty one clears immediately.
     }
   })
   const refreshMedia=()=>mediaPolling.current()
@@ -230,7 +229,7 @@ export function DesktopControls({config,onConfig,expanded,onExpand,mood,receptio
   useEffect(()=>{const color=BIMU_COLORS.find(item=>item[0]===bimuColor)||BIMU_COLORS[0],swatch=customColor?bimuColor:color[2],background=customRgb||color[resolvedTheme==='light'?4:3].split(',').map(Number),audio=equalizerColors(background,swatch,bimuColor==='neutral');document.documentElement.style.setProperty('--notch-rgb',background.join(','));document.documentElement.style.setProperty('--bimu-swatch',swatch);document.documentElement.style.setProperty('--audio-base',audio.base);document.documentElement.style.setProperty('--audio-accent',audio.accent);document.documentElement.style.setProperty('--audio-accent-ink',audio.accentInk);try{localStorage.setItem('bimu-notch-color',bimuColor)}catch{}},[bimuColor,resolvedTheme])
   useEffect(()=>{document.documentElement.dataset.view=tab},[tab])
   useEffect(()=>{document.documentElement.dataset.receiveLayout='notch'},[expanded])
-  const dock=useDock({native:nativeMode,expanded,hovered:hovered||drop.active,preview:hoverPreview&&!drop.active,retracted:manualRetracted||(avoidOverlap&&overlapping),receiving:drop.active,tab:!expanded&&!drop.active&&hovered&&notchPage==='cleanup'?(cleanup.analysis||cleanup.summary||cleanup.busy==='clean'?'cleanup-details':'cleanup'):!expanded&&lyricsVisible&&!drop.active?(hovered&&volumeOpen?'lyrics-volume':'lyrics'):!expanded&&capsNotice!==null?'caps':tab,size:config.size,onError:setError})
+  const dock=useDock({onDragEnd:()=>setHovered(true),native:nativeMode,expanded,hovered:hovered||drop.active,preview:hoverPreview&&!drop.active,retracted:manualRetracted||(avoidOverlap&&overlapping),receiving:drop.active,tab:!expanded&&!drop.active&&hovered&&notchPage==='cleanup'?(cleanup.analysis||cleanup.summary||cleanup.busy==='clean'?'cleanup-details':'cleanup'):!expanded&&lyricsVisible&&!drop.active?(hovered&&volumeOpen?'lyrics-volume':'lyrics'):!expanded&&capsNotice!==null?'caps':tab,size:config.size,onError:setError})
   useEffect(()=>{if(!nativeMode||!avoidOverlap||dock.mode==='pill'){setOverlapping(false);return}let alive=true,busy=false,last=null,count=0;const update=async()=>{if(busy||expanded||drop.active)return;busy=true;try{const monitor=await currentMonitor();if(!monitor)return;const scale=monitor.scaleFactor,a=monitor.workArea,area={x:a.position.x,y:a.position.y,width:a.size.width,height:a.size.height};const [w,h]=notchSize(dock.edge,'idle',config.size,compactLyrics?'lyrics':'home');const width=Math.min(Math.round(w*scale),area.width),height=Math.min(Math.round(h*scale),area.height),p=dockPosition(area,width,height,dock.edge,dock.fraction);const value=await invoke('window_overlaps_notch',{rect:{left:p.x,top:p.y,right:p.x+width,bottom:p.y+height}});if(!alive)return;if(value===last)count++;else{last=value;count=1}if(count>=2)setOverlapping(value)}catch{/* Keep the last stable state if Windows cannot be queried. */}finally{busy=false}};update();const timer=setInterval(update,500);return()=>{alive=false;clearInterval(timer)}},[avoidOverlap,dock.mode,expanded,drop.active,dock.edge,dock.fraction,config.size,compactLyrics])
   useEffect(()=>{if(hovered&&notchPage==='shelf')refreshShelf()},[hovered,notchPage])
   useEffect(()=>{if(!hovered||expanded)return;const timer=setTimeout(()=>document.dispatchEvent(new Event('bimu-panel-visible')),300);return()=>clearTimeout(timer)},[hovered,expanded,notchPage,dock.mode])
