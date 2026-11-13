@@ -24,7 +24,7 @@ public static class BimuNativeWindow {
       UIntPtr result;if(SendMessageTimeout(hwnd,0,UIntPtr.Zero,IntPtr.Zero,2,250,out result)==IntPtr.Zero){error="UI message thread did not respond";return false;}
       Rect outer,client;Point origin=new Point();
       if(!GetWindowRect(hwnd,out outer)||!GetClientRect(hwnd,out client)||!ClientToScreen(hwnd,ref origin)){error="Could not read the actual native frame";return false;}
-      if(Math.Abs(origin.X-outer.Left)>2||Math.Abs(origin.Y-outer.Top)>2||Math.Abs((outer.Right-outer.Left)-client.Right)>2||Math.Abs((outer.Bottom-outer.Top)-client.Bottom)>2){error="Unexpected native caption/border around the transparent window";return false;}
+      if(Math.Abs(origin.X-outer.Left)>2||Math.Abs(origin.Y-outer.Top)>2||Math.Abs((outer.Right-outer.Left)-client.Right)>2||Math.Abs((outer.Bottom-outer.Top)-client.Bottom)>2){error=String.Format("Unexpected native frame: origin offset {0},{1}; outer {2}x{3}, client {4}x{5}",origin.X-outer.Left,origin.Y-outer.Top,outer.Right-outer.Left,outer.Bottom-outer.Top,client.Right,client.Bottom);return false;}
       error="ok";return false;
     },IntPtr.Zero);return error;
   }
@@ -56,6 +56,8 @@ try {
   if($samples -lt 3){throw 'Did not observe a responsive, undecorated native window.'}
   Write-Host "PASS: $samples native frame and UI-heartbeat samples."
 } finally {
+  Get-Content $stdout -ErrorAction SilentlyContinue
+  Get-Content $stderr -ErrorAction SilentlyContinue
   if($testProcess -and !$testProcess.HasExited){Stop-Process -Id $testProcess.Id -Force -ErrorAction SilentlyContinue}
   if($appProcess -and !$appProcess.HasExited){Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue}
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$oldArguments
