@@ -57,9 +57,11 @@ try{
    const movedCursor={x:cursor.x+30,y:cursor.y+30};await nativePointer('move',movedCursor);await page.waitForTimeout(150)
    const actual=await page.evaluate(async()=>{const position=await window.__TAURI_INTERNALS__.invoke('plugin:window|outer_position',{label:'main'}),scale=await window.__TAURI_INTERNALS__.invoke('plugin:window|scale_factor',{label:'main'}),rect=document.querySelector('.desktop').getBoundingClientRect();return {x:position.x+(rect.left+rect.width/2)*scale,y:position.y+(rect.top+rect.height/2)*scale}})
    assert.ok(Math.abs(actual.x-movedCursor.x)<=2&&Math.abs(actual.y-movedCursor.y)<=2,`Actual pill center ${JSON.stringify(actual)} must follow Windows cursor ${JSON.stringify(movedCursor)}`)
+   console.log('PASS actual Windows cursor anchor')
    await page.locator('.desktop').screenshot({path:'test-results/native-windows/pill-drag.png'})
    await nativePointer('up');pointerHeld=false;await page.waitForFunction(()=>document.documentElement.dataset.dragging==='false'&&document.documentElement.dataset.notch==='peek')
   }
+  if(mode==='pill')await nativePointer('move',{x:0,y:0})
   await page.mouse.move(1,1);await page.waitForFunction(()=>document.documentElement.dataset.notch==='idle')
   console.log('PASS actual Windows/WebView2',mode)
  }
