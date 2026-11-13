@@ -15,3 +15,14 @@ test('pill comet closes the contour and keeps a thicker leading head across the 
  for(const head of [0,.01,.5,.99,1]){const segments=loopCometSegments(head);assert.equal(segments.length,24);assert.ok(segments.every(s=>s.start>=0&&s.start<1&&Math.abs(s.end-s.start-.36/24)<1e-9));assert.ok(segments.slice(1).every((s,i)=>s.width>segments[i].width&&s.opacity>segments[i].opacity));}
 })
 test('adding another saved PC requires explicit navigation intent',()=>{assert.equal(pairingView({phase:'idle',linked:true},'join'),'reconnecting');assert.equal(pairingView({phase:'idle',linked:true},'join',true),'join');assert.equal(pairingView({phase:'idle',linked:true},'choose',true),'start');assert.equal(pairingView({phase:'connected',linked:true},'join',true),'connected')})
+
+test('the floating native frame reserves space for the full perimeter glow',()=>{
+ for(const scale of [1,1.25,2])for(const point of [{x:0,y:0},{x:.5,y:.5},{x:1,y:1}]){
+  const area={x:-1920,y:0,width:1920,height:1080},frame=pillEnvelope(area,'M',scale,point)
+  assert.ok(frame.x>=area.x&&frame.y>=area.y&&frame.x+frame.width<=area.x+area.width&&frame.y+frame.height<=area.y+area.height)
+  for(const [state,tab]of [['idle','home'],['peek','lyrics-volume'],['open','settings']]){
+   const [w,h]=pillSize(state,'M',tab),width=Math.min(Math.round(w*scale),area.width-12*scale),height=Math.min(Math.round(h*scale),area.height-12*scale),p=pillPosition(area,width,height,point,scale)
+   assert.ok(p.x-frame.x>=6*scale-1&&p.y-frame.y>=6*scale-1&&frame.x+frame.width-p.x-width>=6*scale-1&&frame.y+frame.height-p.y-height>=6*scale-1)
+  }
+ }
+})
