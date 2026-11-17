@@ -22,7 +22,7 @@ tauri-plugin-dialog = "2"
 
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
-sha2 = "0.10"
+sha2 = "0.11"
 # HMAC 0.13 requires digest 0.11; keep other hashing call sites on their current API.
 sha2-hmac = { package = "sha2", version = "0.11" }
 spake2 = "0.4"
